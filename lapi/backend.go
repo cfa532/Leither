@@ -15,15 +15,27 @@ BackEndStub
 后端Api目前有两部分，后端Session（SessionStub）和应用数据操作（BEAppDataStub）
 */
 
+var _ IRPC = &LApiStub{}
+
+var _ LApi = &BackEndStub{}
+
 type BackEndStub struct {
-	//	*ApiStub
 	*LApiStub
 	*SessionStub
 	*BEAppDataStub
+	*LogStub
 }
 
 // 用于xgo,调用前会替换
-func GetLApi() *BackEndStub {
+// func Api() LApi {
+// 	return nil
+// }
+
+// func RPC() *BackEndStub {
+// 	return nil
+// }
+
+func GetLApi() LApi {
 	return nil
 }
 
@@ -49,6 +61,24 @@ func GetRequest() map[string]string {
 	return nil
 }
 
+// ISession 接口定义了Session操作的所有方法
+type ISession interface {
+	// CreateSession 创建一个session并返回id
+	CreateSession() (sid string)
+
+	// SessionSet 设置session中指定key的值
+	SessionSet(sid, key string, value any) error
+
+	// SessionGet 获取session中指定key的值
+	SessionGet(sid, key string) (value any, err error)
+
+	// SessionDelete 删除session中指定key的值
+	SessionDelete(sid, key string) error
+
+	// ReleaseSession 释放指定的session
+	ReleaseSession(sid string) error
+}
+
 /*
 SessionStub
 
@@ -62,6 +92,7 @@ CreateSession创建一个session并返回id.
 
 这个状态是存放在内存中的，超过1小时不访问就会被GC清作
 */
+
 type SessionStub struct {
 	CreateSession  func() (sid string)
 	SessionSet     func(sid, key string, value any) error
@@ -70,12 +101,159 @@ type SessionStub struct {
 	ReleaseSession func(sid string) error
 }
 
+// CreateSession 创建一个session并返回id
+func (s *BackEndStub) CreateSession() (sid string) {
+	if s.CreateSession != nil {
+		return s.CreateSession()
+	}
+	return ""
+}
+
+// SessionSet 设置session中指定key的值
+func (s *BackEndStub) SessionSet(sid, key string, value any) error {
+	if s.SessionSet != nil {
+		return s.SessionSet(sid, key, value)
+	}
+	return nil
+}
+
+// SessionGet 获取session中指定key的值
+func (s *BackEndStub) SessionGet(sid, key string) (value any, err error) {
+	if s.SessionGet != nil {
+		return s.SessionGet(sid, key)
+	}
+	return nil, nil
+}
+
+// SessionDelete 删除session中指定key的值
+func (s *BackEndStub) SessionDelete(sid, key string) error {
+	if s.SessionDelete != nil {
+		return s.SessionDelete(sid, key)
+	}
+	return nil
+}
+
+// ReleaseSession 释放指定的session
+func (s *BackEndStub) ReleaseSession(sid string) error {
+	if s.ReleaseSession != nil {
+		return s.ReleaseSession(sid)
+	}
+	return nil
+}
+
+var _ ISession = (*BackEndStub)(nil)
+
+// IBEAppData 接口定义了应用数据操作的所有方法
+type IBEAppData interface {
+	// BEOpenAppDataNode 打开节点的弥媒数据
+	BEOpenAppDataNode(ver, mark string) (mmsid string, err error)
+
+	// BEOpenAppDataApp 打开应用的弥媒数据
+	BEOpenAppDataApp(ver, mark string) (mmsid string, err error)
+
+	// BEMMSync 同步弥媒数据
+	BEMMSync(strdhts string, mid string, param map[string]string) error
+
+	// BELoginAsAuthor 以作者身份登录
+	BELoginAsAuthor() (sid string, err error)
+
+	// BELoginAsApp 以应用身份登录
+	BELoginAsApp() (sid string, err error)
+
+	// BESignPPT 签名PPT文档
+	BESignPPT(info map[string]string, period int) (string, error)
+
+	// BESign 签名操作
+	BESign(info map[string]string) (string, error)
+}
+
+var _ IBackEnd = (*BackEndStub)(nil)
+
+// ILogStub 接口定义了日志操作的所有方法
+type ILogStub interface {
+	// Trace 记录跟踪级别日志
+	Trace(format string, v ...interface{})
+	
+	// Debug 记录调试级别日志
+	Debug(format string, v ...interface{})
+	
+	// Info 记录信息级别日志
+	Info(format string, v ...interface{})
+	
+	// Warn 记录警告级别日志
+	Warn(format string, v ...interface{})
+	
+	// Error 记录错误级别日志
+	Error(format string, v ...interface{})
+	
+	// Critical 记录严重级别日志
+	Critical(format string, v ...interface{})
+}
+
+var _ ILogStub = (*BackEndStub)(nil)
+
+// BEOpenAppDataNode 打开节点的弥媒数据
+func (s *BackEndStub) BEOpenAppDataNode(ver, mark string) (mmsid string, err error) {
+	if s.BEAppDataStub != nil && s.BEAppDataStub.BEOpenAppDataNode != nil {
+		return s.BEAppDataStub.BEOpenAppDataNode(ver, mark)
+	}
+	return "", nil
+}
+
+// BEOpenAppDataApp 打开应用的弥媒数据
+func (s *BackEndStub) BEOpenAppDataApp(ver, mark string) (mmsid string, err error) {
+	if s.BEAppDataStub != nil && s.BEAppDataStub.BEOpenAppDataApp != nil {
+		return s.BEAppDataStub.BEOpenAppDataApp(ver, mark)
+	}
+	return "", nil
+}
+
+// BEMMSync 同步弥媒数据
+func (s *BackEndStub) BEMMSync(strdhts string, mid string, param map[string]string) error {
+	if s.BEAppDataStub != nil && s.BEAppDataStub.BEMMSync != nil {
+		return s.BEAppDataStub.BEMMSync(strdhts, mid, param)
+	}
+	return nil
+}
+
+// BELoginAsAuthor 以作者身份登录
+func (s *BackEndStub) BELoginAsAuthor() (sid string, err error) {
+	if s.BEAppDataStub != nil && s.BEAppDataStub.BELoginAsAuthor != nil {
+		return s.BEAppDataStub.BELoginAsAuthor()
+	}
+	return "", nil
+}
+
+// BELoginAsApp 以应用身份登录
+func (s *BackEndStub) BELoginAsApp() (sid string, err error) {
+	if s.BEAppDataStub != nil && s.BEAppDataStub.BELoginAsApp != nil {
+		return s.BEAppDataStub.BELoginAsApp()
+	}
+	return "", nil
+}
+
+// BESignPPT 签名PPT文档
+func (s *BackEndStub) BESignPPT(info map[string]string, period int) (string, error) {
+	if s.BEAppDataStub != nil && s.BEAppDataStub.BESignPPT != nil {
+		return s.BEAppDataStub.BESignPPT(info, period)
+	}
+	return "", nil
+}
+
+// BESign 签名操作
+func (s *BackEndStub) BESign(info map[string]string) (string, error) {
+	if s.BEAppDataStub != nil && s.BEAppDataStub.BESign != nil {
+		return s.BEAppDataStub.BESign(info)
+	}
+	return "", nil
+}
+
 /*
 BEAppDataStub
 
 这里面放的是应用中后端数据操作的api接口。
 
-一、BEOpenAppDataNode(ver string) (mmsid string, err error)
+一、BEOpenAppDataNode(ver, mark string) (mmsid string, err error)
 简介：
 
 	这是应用在节点上的打开节点的弥媒
@@ -119,4 +297,61 @@ type BEAppDataStub struct {
 	BELoginAsApp      func() (sid string, err error)
 	BESignPPT         func(info map[string]string, period int) (string, error)
 	BESign            func(info map[string]string) (string, error)
+}
+
+/*
+LogStub
+
+这里面放的是应用中日志操作的api接口。
+*/
+type LogStub struct {
+	Trace    func(format string, v ...interface{})
+	Debug    func(format string, v ...interface{})
+	Info     func(format string, v ...interface{})
+	Warn     func(format string, v ...interface{})
+	Error    func(format string, v ...interface{})
+	Critical func(format string, v ...interface{})
+}
+
+
+// Trace 记录跟踪级别日志
+func (s *BackEndStub) Trace(format string, v ...interface{}) {
+	if s.LogStub != nil && s.LogStub.Trace != nil {
+		s.LogStub.Trace(format, v...)
+	}
+}
+
+// Debug 记录调试级别日志
+func (s *BackEndStub) Debug(format string, v ...interface{}) {
+	if s.LogStub != nil && s.LogStub.Debug != nil {
+		s.LogStub.Debug(format, v...)
+	}
+}
+
+// Info 记录信息级别日志
+func (s *BackEndStub) Info(format string, v ...interface{}) {
+	if s.LogStub != nil && s.LogStub.Info != nil {
+		s.LogStub.Info(format, v...)
+	}
+}
+
+// Warn 记录警告级别日志
+func (s *BackEndStub) Warn(format string, v ...interface{}) {
+	if s.LogStub != nil && s.LogStub.Warn != nil {
+		s.LogStub.Warn(format, v...)
+	}
+}
+
+// Error 记录错误级别日志
+func (s *BackEndStub) Error(format string, v ...interface{}) {
+	if s.LogStub != nil && s.LogStub.Error != nil {
+		s.LogStub.Error(format, v...)
+	}
+}
+
+// Critical 记录严重级别日志
+func (s *BackEndStub) Critical(format string, v ...interface{}) {
+	if s.LogStub != nil && s.LogStub.Critical != nil {
+		s.LogStub.Critical(format, v...)
+	}
 }
