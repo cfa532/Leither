@@ -10,8 +10,33 @@ macOS uses `launchd` with plist files to manage services. This guide sets up Lei
 
 - Leither binary at `/Users/cfa532/Documents/GitHub/darwin/Leither`
 - macOS with user account
+- **Full Disk Access** permission granted to Terminal (or your preferred terminal app)
 
-## Step 1: Move Leither to an Accessible Location
+## Step 1: Grant Full Disk Access Permission
+
+**Important**: Leither requires Full Disk Access to run properly as a service on macOS. This permission is required for Leither to access files and directories across the system.
+
+### Grant Full Disk Access to Terminal
+
+1. Open **System Preferences** (or **System Settings** on macOS Ventura+)
+2. Go to **Security & Privacy** → **Privacy** tab
+3. Select **Full Disk Access** from the left sidebar
+4. Click the lock icon and enter your password
+5. Click the **+** button and add your Terminal application:
+   - **Terminal.app**: `/Applications/Utilities/Terminal.app`
+   - **iTerm2**: `/Applications/iTerm.app` (if using iTerm2)
+   - **VS Code Terminal**: `/Applications/Visual Studio Code.app` (if using VS Code integrated terminal)
+6. Make sure the checkbox next to your terminal app is checked
+7. Restart your terminal application
+
+### Why Full Disk Access is Required
+
+- Leither needs to access files across the system for its container operations
+- LaunchAgents have restricted access without Full Disk Access permission
+- This permission allows Leither to create and manage files in various directories
+- Without this permission, Leither may fail to start or function properly
+
+## Step 2: Move Leither to an Accessible Location
 
 macOS has privacy restrictions on the `~/Documents` folder that prevent LaunchAgents from accessing it. Move Leither to `/usr/local/darwin`:
 
@@ -29,7 +54,7 @@ sudo chmod +x /usr/local/darwin/Leither
 chmod -R u+w /usr/local/darwin
 ```
 
-## Step 2: Test Leither from New Location
+## Step 3: Test Leither from New Location
 
 Before creating the service, verify Leither works from the new location:
 
@@ -43,7 +68,7 @@ cd /usr/local/darwin
 # If it starts successfully, stop it with Ctrl+C
 ```
 
-## Step 3: Create the LaunchAgent Plist File
+## Step 4: Create the LaunchAgent Plist File
 
 Create the plist configuration file:
 
@@ -106,19 +131,19 @@ Add the following content:
 - **StandardOutPath**: Location for standard output logs
 - **StandardErrorPath**: Location for error logs
 
-## Step 4: Set Proper Permissions
+## Step 5: Set Proper Permissions
 
 ```bash
 chmod 644 ~/Library/LaunchAgents/com.leither.service.plist
 ```
 
-## Step 5: Validate the Plist File
+## Step 6: Validate the Plist File
 
 ```bash
 plutil -lint ~/Library/LaunchAgents/com.leither.service.plist
 ```
 
-## Step 6: Load the Service
+## Step 7: Load the Service
 
 ```bash
 # Load the service
@@ -133,7 +158,7 @@ Expected output:
 3149    0    com.leither.service
 ```
 
-## Step 7: Check Logs
+## Step 8: Check Logs
 
 ```bash
 # View standard output
@@ -146,7 +171,7 @@ cat /tmp/leither.err
 tail -f /tmp/leither.log
 ```
 
-## Step 8: Test After Reboot
+## Step 9: Test After Reboot
 
 ```bash
 sudo reboot
@@ -183,6 +208,24 @@ Check logs: `cat /tmp/leither.err`
 
 ### "Operation not permitted" Errors
 Executable is in protected location. Move to `/usr/local/darwin`.
+
+### "Full Disk Access" Permission Denied
+If Leither fails to start due to permission issues:
+
+1. **Check Full Disk Access Status**:
+   ```bash
+   # Check if Terminal has Full Disk Access
+   sqlite3 ~/Library/Application\ Support/com.apple.TCC/TCC.db "SELECT * FROM access WHERE service='kTCCServiceSystemPolicyAllFiles';"
+   ```
+
+2. **Grant Full Disk Access** (if not already done):
+   - Go to **System Preferences** → **Security & Privacy** → **Privacy** → **Full Disk Access**
+   - Add your Terminal application
+   - Restart Terminal and try again
+
+3. **Alternative: Use LaunchDaemon instead of LaunchAgent**:
+   - Move plist to `/Library/LaunchDaemons/` (requires sudo)
+   - This gives the service system-level permissions
 
 ### Service Doesn't Start After Reboot
 Increase `StartInterval` to 90 or 120 seconds

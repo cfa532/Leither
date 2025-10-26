@@ -12,8 +12,33 @@ tus-server is a resumable file upload server that implements the tus protocol. T
 - npm (Node Package Manager)
 - macOS with user account
 - Basic terminal knowledge
+- **Full Disk Access** permission granted to Terminal (or your preferred terminal app)
 
-## Step 1: Install Node.js and npm
+## Step 1: Grant Full Disk Access Permission
+
+**Important**: tus-server requires Full Disk Access to run properly as a service on macOS. This permission is required for Node.js to access files and directories across the system.
+
+### Grant Full Disk Access to Terminal
+
+1. Open **System Preferences** (or **System Settings** on macOS Ventura+)
+2. Go to **Security & Privacy** → **Privacy** tab
+3. Select **Full Disk Access** from the left sidebar
+4. Click the lock icon and enter your password
+5. Click the **+** button and add your Terminal application:
+   - **Terminal.app**: `/Applications/Utilities/Terminal.app`
+   - **iTerm2**: `/Applications/iTerm.app` (if using iTerm2)
+   - **VS Code Terminal**: `/Applications/Visual Studio Code.app` (if using VS Code integrated terminal)
+6. Make sure the checkbox next to your terminal app is checked
+7. Restart your terminal application
+
+### Why Full Disk Access is Required
+
+- tus-server needs to access files across the system for file upload operations
+- Node.js LaunchAgents have restricted access without Full Disk Access permission
+- This permission allows tus-server to create and manage upload files in various directories
+- Without this permission, tus-server may fail to start or function properly
+
+## Step 2: Install Node.js and npm
 
 If you don't have Node.js installed:
 
@@ -27,7 +52,7 @@ node --version
 npm --version
 ```
 
-## Step 2: Create tus-server Directory Structure
+## Step 3: Create tus-server Directory Structure
 
 Create the necessary directory structure for tus-server:
 
@@ -45,7 +70,7 @@ sudo chown -R $(whoami):staff /usr/local/tus-server
 chmod -R 755 /usr/local/tus-server
 ```
 
-## Step 3: Install tus-server
+## Step 4: Install tus-server
 
 Install tus-server using npm:
 
@@ -63,7 +88,7 @@ npm install tus-server
 npm install express cors dotenv
 ```
 
-## Step 4: Create tus-server Configuration
+## Step 5: Create tus-server Configuration
 
 Create a configuration file for tus-server:
 
@@ -99,7 +124,7 @@ Add the following configuration:
 }
 ```
 
-## Step 5: Create tus-server Startup Script
+## Step 6: Create tus-server Startup Script
 
 Create a startup script for tus-server:
 
@@ -184,7 +209,7 @@ Make the script executable:
 chmod +x /usr/local/tus-server/bin/start-tus-server.sh
 ```
 
-## Step 6: Test tus-server
+## Step 7: Test tus-server
 
 Before creating the service, verify tus-server works:
 
@@ -198,7 +223,7 @@ cd /usr/local/tus-server
 # If it starts successfully, stop it with Ctrl+C
 ```
 
-## Step 7: Create the LaunchAgent Plist File
+## Step 8: Create the LaunchAgent Plist File
 
 Create the plist configuration file:
 
@@ -263,19 +288,19 @@ Add the following content:
 - **StandardErrorPath**: Location for error logs (`/tmp/tus-server.err.log`)
 - **EnvironmentVariables**: Environment variables including NODE_ENV and PATH
 
-## Step 8: Set Proper Permissions
+## Step 9: Set Proper Permissions
 
 ```bash
 chmod 644 ~/Library/LaunchAgents/com.tus-server.plist
 ```
 
-## Step 9: Validate the Plist File
+## Step 10: Validate the Plist File
 
 ```bash
 plutil -lint ~/Library/LaunchAgents/com.tus-server.plist
 ```
 
-## Step 10: Load the Service
+## Step 11: Load the Service
 
 ```bash
 # Load the service
@@ -290,7 +315,7 @@ Expected output:
 3149    0    com.tus-server
 ```
 
-## Step 11: Check Logs
+## Step 12: Check Logs
 
 ```bash
 # View standard output
@@ -303,7 +328,7 @@ cat /tmp/tus-server.err.log
 tail -f /tmp/tus-server.log
 ```
 
-## Step 12: Test After Reboot
+## Step 13: Test After Reboot
 
 ```bash
 sudo reboot
@@ -401,6 +426,24 @@ Check logs: `cat /tmp/tus-server.err.log`
 
 ### "Operation not permitted" Errors
 Executable is in protected location. Ensure proper permissions on `/usr/local/tus-server`.
+
+### "Full Disk Access" Permission Denied
+If tus-server fails to start due to permission issues:
+
+1. **Check Full Disk Access Status**:
+   ```bash
+   # Check if Terminal has Full Disk Access
+   sqlite3 ~/Library/Application\ Support/com.apple.TCC/TCC.db "SELECT * FROM access WHERE service='kTCCServiceSystemPolicyAllFiles';"
+   ```
+
+2. **Grant Full Disk Access** (if not already done):
+   - Go to **System Preferences** → **Security & Privacy** → **Privacy** → **Full Disk Access**
+   - Add your Terminal application
+   - Restart Terminal and try again
+
+3. **Alternative: Use LaunchDaemon instead of LaunchAgent**:
+   - Move plist to `/Library/LaunchDaemons/` (requires sudo)
+   - This gives the service system-level permissions
 
 ### Service Doesn't Start After Reboot
 Increase `StartInterval` to 90 or 120 seconds
