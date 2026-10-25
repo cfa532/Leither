@@ -196,7 +196,12 @@ Deep-link Tweet Detail loading uses a two-stage ordinary-read policy:
 2. Call `get_tweet` on that proven author access node with
    `fromdetailview="true"`. When the node can serve the Tweet and is not already
    its provider, this asks the node to take the Tweet provider role so Leither
-   keeps its copy updated.
+   keeps its copy updated. When the node holds no data for the Tweet at all
+   (it provides the author, but Leither has not yet replicated this Tweet), the
+   server pulls the Tweet from its root with `MiMeiSync`, takes the provider role
+   and then serves it, so the first read succeeds. This pull happens only for a
+   detail-view read of a missing Tweet on a non-root node; it never runs for a
+   routine read or for a Tweet the node already holds.
 3. If that node cannot yet serve the newly-published Tweet, discover providers
    by `tweetId` and retry `get_tweet` there. Tweet provider discovery is the
    slower fallback because the Tweet normally has fewer providers. If those
@@ -278,6 +283,22 @@ announces the Tweet only when this node is not already a provider. After that
 announcement, Leither—not a client polling loop—is responsible for keeping the
 provider copy synchronized; the completion time remains unbounded in the P2P
 system.
+
+The one read-triggered pull is a detail-view miss. When `get_tweet` is called with
+`fromdetailview="true"` and this node holds no data for the Tweet, the backend:
+
+1. Finds the author's root host from the client's `authorhostid` or, for a Tweet
+   quoted by a v3 reply, from the quoted Tweet's author account (`authorid`). With
+   no root host known, or when this node is the root, it does nothing: a Tweet
+   missing from its root does not exist.
+2. Calls `MiMeiSync` for the Tweet, then `MiMeiIsProvider`/`MiMeiProvide` as in
+   the provider-role bullet above.
+3. Reads the Tweet again and returns it. If the sync fails, the read reports
+   "Tweet not found" and clients continue with provider discovery by `tweetId`.
+
+This is deliberately narrow: the request names a Tweet the user explicitly opened,
+and the alternative is reporting "not found" for a Tweet Leither has not yet
+delivered. A node that already holds the Tweet takes no sync here.
 
 ## Review Checklist
 
