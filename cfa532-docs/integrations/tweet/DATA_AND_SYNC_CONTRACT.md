@@ -104,6 +104,51 @@ tweetid        = parent tweet/comment ID
 
 Replies follow the same rule: a reply is stored on its parent comment author's root node and is directly referenced by that parent comment.
 
+## Caller Identity and Account Control (debug only, 2026-11-11)
+
+**Status:** implemented on the `owner-only-writes` branches of TweetBackendApp and
+Tweet-iOS and published to the debug app only (`twbe`, version 1717). Release, Android
+and Web do not use it. Nothing in this section changes where an object is stored or
+which node a write goes to. The storage rules for comments and replies above are still
+in force; they are the next thing this work intends to change, and this document must
+be revised when it does.
+
+Every object is created and written under the application author's identity, so a
+node cannot tell users apart by itself and the user id in a request is a claim. The
+backend now checks that claim where it can:
+
+- A client signs in to the node's own Leither login and passes the session as
+  `usersid`. The node resolves it with `GetVar(usersid, "userid")`. The parameter is
+  not `sid`, which carries the author session between entries and between nodes.
+- A User records the Leither user id that controls it as `authUid`. A User created
+  before this change has none until its user signs in once on its root node.
+- **Owners** have access to the node's machine. `tweet-owner.sh` there issues a
+  Leither key and lists its user id in `tweet.node.json` beside the Leither
+  executable. `login` with only `usersid` signs the owner in and creates the User on
+  the first call. A node can have several owners.
+- **Guests** register a username and password with Leither on the User's root node.
+  The User stores no password. The node's owners can refuse new guests
+  (`tweet-owner.sh --guests deny`); `health` reports `guestRegistration`.
+- Entries that write the caller's own User or Tweets refuse a session that does not
+  control the User named in the request. `TweetBackendApp/SERVER_API.md` lists them.
+
+Limits that matter to anyone changing synchronization or routing:
+
+- **Not enforced yet.** A request without `usersid`, or for a User without `authUid`,
+  is performed as before. Do not rely on the check as a security boundary.
+- **A session is valid only on the node that issued it**, and a guest's credential
+  exists only on the root node. A client opens a session on the node it is about to
+  write to; this is one more reason writes go to `hostIds[0]`.
+- **Writes into another user's data are not covered**: `add_comment`,
+  `delete_comment`, `toggle_favorite`, `toggle_bookmark`, `retweet_added`,
+  `retweet_removed`, `toggle_follower` and `message_incoming` are unchanged.
+- **Node-to-node calls carry no user session.** The entries a node calls on another
+  node remain callable by any client.
+
+The request, what is built, what is missing and how to test are in
+`Tweet-iOS/docs/OWNER_ONLY_WRITES_MEMO.md`. Leither's sign-in behavior is recorded in
+the technical foundation, section 8.2.
+
 ## One-Level Reference Synchronization
 
 Leither follows Mimei references one level below the synchronized parent. It does not recursively synchronize the full descendant graph.

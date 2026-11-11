@@ -4,7 +4,7 @@
 **Moved:** 2026-10-16 from LifeAlbum; the old path contains only a relocation notice.
 
 **Status:** Application-independent technical reference
-**Leither CLI reviewed:** V0.24.02, API contract version 1; commit, pin and node-Files behavior rechecked on V0.24.23 (2026-09-16, section 5.6) and on V0.24.27 (2026-09-19, section 5.7); public node variables (`GetVar`/`/getvar`) verified on V0.24.64 (2026-10-20, section 9.8); rights model and Files read/write enforcement from the maintainers' V0.24.73 guide (2026-11-10, section 8.1, not runtime-verified here)
+**Leither CLI reviewed:** V0.24.02, API contract version 1; commit, pin and node-Files behavior rechecked on V0.24.23 (2026-09-16, section 5.6) and on V0.24.27 (2026-09-19, section 5.7); public node variables (`GetVar`/`/getvar`) verified on V0.24.64 (2026-10-20, section 9.8); rights model and Files read/write enforcement from the maintainers' V0.24.73 guide (2026-11-10, section 8.1, not runtime-verified here); username/password and key sign-in from clients verified on V0.24.47 and V0.24.73 (2026-11-11, section 8.2)
 **Online documentation reviewed:** `vzhan.cn/#doc.html`, August 2026
 **Source repository reviewed:** [3and4/Leither](https://github.com/3and4/Leither), originally August 2026; documentation index, README, historical changelog and key-authentication guide refreshed on 2026-10-16 at commit `90362aef401c4d7ff53eb3573443f031f0be880f`
 **CLI inspection refreshed:** gen8 `/home/pi/demo/Leither`, V0.24.63, amd64, API 1, 2026-10-16; all 159 help entries inspected recursively (section 12.1). Earlier runtime observations retain their own version and date.
@@ -996,6 +996,74 @@ after tightening (Guest byte versus a future ticket/guest grant); the read gate'
 version; and whether per-subdirectory rights in one tree would be split MiMeis or a
 new platform path ACL.
 
+### 8.2 Signing in from a client: username/password and key (verified 2026-11-11)
+
+**Source and status.** Runtime probes made while adding caller identity to the Tweet
+backend. Two nodes: a macOS node on **V0.24.47** (loopback) and gen8 on **V0.24.73,
+linux/amd64** (public address). The probes used a Go client (hprose-golang v3.0.16
+over `/ws/`) and the Tweet iOS app (Objective-C hprose over HTTP `/webapi/`). Each row
+says where it was observed. The upstream key-authentication guide still places
+username/password login outside its supported contract; this section records what the
+binaries did, not a promise.
+
+#### Username and password (`byname`)
+
+| Call | Result | Observed on |
+|---|---|---|
+| `Register(name, pass, "")` with no session | Returns a 27-character uid. Anyone who can reach the node can call it. | V0.24.47, V0.24.73 |
+| `Register` with a name the node already holds | `5022:name exist：<name>` | V0.24.47 |
+| `Login(name, pass)` | Returns `{Uid, Sid}`; the sid is 40 hex characters and `GetVar(sid, "userid")` returns the same uid | V0.24.47, V0.24.73 |
+| `Login(name, pass, "byname")` | Same result as the two-argument form | V0.24.47 |
+| `Login` with a wrong password | `1102:login info error` | V0.24.47 |
+| `SetUserInfo(sid, {"newpass": new})` | Returns no error; afterwards the old password fails with `1102` and the new one signs in as the same uid | V0.24.47 |
+
+The account exists only on the node that registered it, as the guide states for all
+authentication records. An application that wants "sign in from anywhere" has to send
+the user to that node. An application cannot stop `Register`: a MApp is not consulted.
+What it can do is refuse to create its own account object for a Leither user it did
+not expect.
+
+#### Key sign-in from a phone
+
+A node-issued identity lets a non-Go client sign in with `LoginWithPPT` without
+implementing Go's gob encoding:
+
+1. On the node: `lpki genkey`, `lpki gencert -k <key> -m "name=<name>"`,
+   `lpki signppt -c <cert> -p 15 -m "CertFor=Self"`. Keep the passport's `SignerID`
+   (the uid) and `SignerInfo` (the certificate, base64 of a gob), and the 32-byte seed
+   from the key file's `Sk` (seed followed by public key).
+2. On the client: build `Data = "CertFor=Self;EndTime=<t>;SignTime=<t>;"`, sign those
+   bytes with Ed25519, and send
+   `{Signature (standard base64), SignerID, SignerInfo, KeyType: "sodiumv2", Version: 1, Data}`
+   as a JSON string to `LoginWithPPT`.
+
+| Observation | Observed on |
+|---|---|
+| A passport minted this way, with the time fields in the **legacy** form `yyyyMMddHHmmssUTC`, is accepted and the returned uid equals `SignerID` | V0.24.47, V0.24.73 |
+| `LoginWithPPT` is reachable over HTTP `/webapi/` as well as `/ws/`, on the same endpoint a client uses for `RunMApp` | V0.24.73 (iOS) |
+| The Objective-C hprose client receives the `LoginReply` struct as a dictionary with keys `Sid` and `Uid` | V0.24.73 (iOS) |
+| For a certificate made with `gencert -m "name=<name>"`, `SignerInfo` can be rebuilt byte-for-byte from the certificate signature, uid, public key and name, using the fixed gob prefixes in LifeDrive's installer. A QR code can therefore carry the seed and the 64-byte signature instead of the ~770-character certificate. | V0.24.47, V0.24.73 |
+
+The reconstruction is checked, not assumed: `TweetBackendApp/tweet-owner.sh` compares
+the rebuilt certificate with Leither's own and prints a compact code only when they are
+equal. The layout is shared by LifeAlbum's installer and apps and by Tweet-iOS
+(`OwnerIdentity`); a Leither release that changes the certificate encoding breaks the
+compact form but not the full identity file.
+
+#### Reading the caller's identity inside a MApp
+
+- A client passes its login sid as an ordinary request parameter and the MApp calls
+  `GetVar(thatSid, "userid")`. Verified in the Tweet Go MApp on V0.24.73 for both a
+  `byname` session and a key session; LifeDrive's MApp does the same.
+- Use a parameter name of your own. `sid` is also what one entry hands another and
+  what a cross-node `RunMApp` carries (the author session), so a user's session under
+  that name can be replaced or mistaken for the author's. Tweet uses `usersid`.
+- A 40-hex string the node never issued did not resolve to a uid. The probe could not
+  tell whether `GetVar` returned an error or an empty value, because the MApp treats
+  both as "Session invalid".
+- The session is a bearer credential for as long as it lives (one hour, lost on
+  restart). Redact it in request logs, as with a password.
+
 ## 9. API Boundaries
 
 There are three distinct integration surfaces:
@@ -1382,6 +1450,8 @@ TweetBackendApp is a useful behavioral reference for:
 - Binary upload chunks in `args`, with offsets and session handles in `request`.
 - Logging contextual entry and object identifiers without logging private keys or raw credentials.
 - Closing handles on every exit path. The Go port improves on older JavaScript entries by making this invariant explicit.
+- Reading node-local configuration with `os` (`os.Executable`, `os.Getwd`, `os.Stat`, `os.ReadFile`) from a file beside the Leither executable. Verified in the Go MApp on V0.24.73 (2026-11-11) in container mode, where the file was found and read; `runapp --local` compiled and ran the same lookup with no file present. LifeDrive's MApp reads its household file the same way. Only someone with access to the machine can write such a file, which makes it a usable statement of what the node's operator has decided.
+- Returning stored records through one reader. A Go `int64` beyond 32 bits placed in a reply map (a millisecond timestamp from `time.Now().UnixMilli()`) reached the Objective-C hprose client as a **string**, while the same field read back from a stored JSON record (a `float64`) arrived as a number. A Go hprose client decoded both as numbers, so a Go probe does not reveal the difference. Observed on V0.24.73 (2026-11-11): Tweet's `login` reply failed to decode on iOS until it returned the account through `get_user_core_data` like every other entry.
 
 Its Database calls—`Get`, `Set`, hashes, lists, and sorted sets—belong to its type-`2` MiMei model. They are not required by the MApp runtime and must not be copied into an application whose authoritative model is File type. A basic cloud drive can use ordinary directories and files directly; JSON is needed only for optional information the filesystem cannot represent.
 
@@ -1691,6 +1761,9 @@ This reference was reconciled against:
   earlier revision disagree, the probe result is the later evidence: the Go package
   allowlist in particular has **shrunk** between versions, so treat any package list —
   including this one — as version-pinned.
+- Direct probes on **V0.24.47** (macOS, loopback) and **V0.24.73** (gen8) on 2026-11-11
+  for `Register`, `Login`, `SetUserInfo`, client-minted passports with `LoginWithPPT`,
+  and `GetVar(sid, "userid")` inside a Go MApp (section 8.2).
 - TweetWeb's generated Leither bootstrap page and published top-level web objects for
   the `/entry` provider race, `window.getParam()` contract, `/mm/<mid>:<ver>/` asset
   rebasing, and ordered script injection.
