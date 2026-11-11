@@ -4,7 +4,7 @@
 **Moved:** 2026-10-16 from LifeAlbum; the old path contains only a relocation notice.
 
 **Status:** Application-independent technical reference
-**Leither CLI reviewed:** V0.24.02, API contract version 1; commit, pin and node-Files behavior rechecked on V0.24.23 (2026-09-16, section 5.6) and on V0.24.27 (2026-09-19, section 5.7); public node variables (`GetVar`/`/getvar`) verified on V0.24.64 (2026-10-20, section 9.8)
+**Leither CLI reviewed:** V0.24.02, API contract version 1; commit, pin and node-Files behavior rechecked on V0.24.23 (2026-09-16, section 5.6) and on V0.24.27 (2026-09-19, section 5.7); public node variables (`GetVar`/`/getvar`) verified on V0.24.64 (2026-10-20, section 9.8); rights model and Files read/write enforcement from the maintainers' V0.24.73 guide (2026-11-10, section 8.1, not runtime-verified here)
 **Online documentation reviewed:** `vzhan.cn/#doc.html`, August 2026
 **Source repository reviewed:** [3and4/Leither](https://github.com/3and4/Leither), originally August 2026; documentation index, README, historical changelog and key-authentication guide refreshed on 2026-10-16 at commit `90362aef401c4d7ff53eb3573443f031f0be880f`
 **CLI inspection refreshed:** gen8 `/home/pi/demo/Leither`, V0.24.63, amd64, API 1, 2026-10-16; all 159 help entries inspected recursively (section 12.1). Earlier runtime observations retain their own version and date.
@@ -238,7 +238,9 @@ Consequences:
   CIDs, and the bytes behind its CIDs, as readable by anyone.
 
 Leither maintainers' memo (2026-10-14, "files-mm-read-permission", measured on a
-temporary V0.24.62 node) confirms and explains these results:
+temporary V0.24.62 node) confirms and explains these results. Their 2026-11-10 guide
+for V0.24.73 (section 8.1) supersedes its read-gate plan and its claim that an existing
+MiMei's default table cannot be changed:
 
 - Reads under `/.mm/<mid>` are not checked: `FilesLs`, `FilesStat` and `MFLs`
   take no rights decision, and a MApp reading `/.mm/<mid>/secret.txt` as an
@@ -737,7 +739,7 @@ The installed CLI exposes `--key-file` on privileged operations such as `mimei p
 
 MiMei rights are stored per MiMei and recipient UID. The API shape is `MMSetRight(authorSID, mid, recipientUID, right)`, with `MMGetRight(sid, mid, uid)` available to retrieve the current value. The author SID identifies the authenticated authority making the change; the recipient UID is the stable identity receiving the permission. Consequently, the grant survives the expiry of the particular browser SID used by the recipient: a later authenticated SID is mapped back to the UID when File-MiMei data operations evaluate access. On MiniPC (2026-09-08), anonymous `MMOpen` returned a non-empty handle even with rights `0`, while `MFGetData` and `MFReaddir` both returned `1101:Permission denied`, through both loopback and public RPC. A successful open is not evidence of permission to read or list contents.
 
-The `right` argument is a packed `uint64` made from Linux-style permission groups. Inside a group, read is `4`, write is `2`, and execute/use is `1`; combinations use bitwise OR, as with Unix file modes. For example, `6` is read plus write and `7` is read plus write plus execute. A larger value such as LifeDrive's `0x07276704` contains several such groups and must be interpreted using Leither's group layout rather than as one `rwx` triplet. Software changing only part of an existing grant should read it with `MMGetRight`, update the intended bits, and then call `MMSetRight` with the resulting complete mask.
+The `right` argument is not a Unix `rwx` mode. A per-uid grant is a *score* whose low byte is the explicit rights bits and whose second byte is the identity group; a MiMei's default table is one byte per group, with Guest in the low byte. The bit values, the groups and how the effective right is chosen are in section 8.1. (An earlier version of this paragraph described "Linux-style permission groups"; that was an inference and is superseded.) Software changing only part of an existing grant should read it with `MMGetRight`, update the intended bits, and then call `MMSetRight` with the resulting complete value.
 
 Where the installed node's authorization behavior does not meet an application's requirements, applications may place a fail-closed compatibility authorization layer in front of Leither. Such a layer can enforce application rights and then execute an allowlisted operation with the owner's configured key, but this is application-level enforcement: a node administrator or anyone holding the owner key may bypass it. Applications must disclose that limitation and retain an adapter boundary for later native enforcement.
 
@@ -753,6 +755,246 @@ The CLI accepts common connection and identity options:
 - `--json`: Stable machine-readable command envelope.
 
 Applications should use the corresponding APIs directly. The CLI remains valuable for administration, diagnostics, recovery, and reproducing an API operation manually.
+
+### 8.1 Rights model and read/write enforcement on V0.24.73 (maintainers' guide, 2026-11-10)
+
+**Source and status.** Leither maintainers' "Files and directory permission guide
+(application developer edition)", dated 2026-11-10, written for V0.24.73 from its
+source and behavior. It was received as a Markdown file and is summarized here; its
+statements are maintainer claims, not runtime verification by this document. Check a
+node's version first with `GetVar(sid, "ver")` or `/getvar?name=ver` (section 9.8).
+Where it differs from the 2026-10-14 maintainers' memo summarized in section 5.2, this
+guide supersedes it; the differences are listed at the end of this section.
+
+Only two kinds of object carry rights: a **MiMei** (`mid`) and a **Files directory
+object** (`ext=filedir`). Today a MiMei's read right is enforced on content reads and
+can be tightened on an existing MiMei; a directory object's write right is enforced on
+five Files RPCs; a directory object's **read right is stored but not enforced**. The
+read gate has been decided but has no version or schedule.
+
+#### Subjects
+
+- A uid is the 27-character identity derived from a key. The same key is the same uid
+  on every node; a new key is a new uid and loses every grant. Revoking one device of
+  several sharing a key cannot be expressed in Leither.
+- An empty session is **guest**. Guest has rights (the Guest byte of a MiMei's default
+  table) but no uid and cannot write.
+- The CLI run on a node with its default identity acts as the **node system identity**
+  (host key), which passes the write gate unconditionally. Never use it to verify an
+  ordinary user's rights.
+- `Leither lpki id -i <key file>` prints a key's uid on its first line.
+
+#### MiMei rights
+
+| Item | Meaning |
+|---|---|
+| Author | The creator of the MiMei. The author always has every right; it cannot be removed. |
+| Per-uid grant (`mm2user`) | `uid → score`. Low byte: explicit rights bits. Second byte: identity group. |
+| Default table | The `right` given to `MMCreate`/`mimei create -r`: one byte per group. In use: Guest (byte 0), Owner (1), Manager (2), Member (3); bytes 4–7 are further groups. |
+| Effective right | The explicit bits if they are non-zero; otherwise the default-table byte of the uid's group. Guest uses the Guest byte. |
+| Change the default table of an **existing** MiMei | `mimei setright --mid <mid> all <table>` (second argument `all`, the mid itself, or empty means "whole table"). Needs Super; the author always passes. |
+| Cache | Rights are cached for 30 minutes. A successful `mimei setright` invalidates the cache on the node that executed it. Propagation to other replicas is unverified. |
+| Where to run | `mimei setright` is a local database operation: run it on a node that holds the MiMei, with the author's key or that node's system identity. On another node it reports that the MiMei does not exist. |
+
+Rights bits: Execute `0x01`, Write `0x02`, Read `0x04`, Publish `0x08`,
+Backup `0x10`, Manager `0x20`, Super `0x40`. Words accepted by `mimei setright`,
+`files setright` and `mimei create -r`: `execute` (also `excute`), `write`, `read`,
+`publish`, `backup`, `manager`, `super`, `operate` = `0x07`, `admin` = `0x60`,
+`app` = `0x05`, `all` = `0x6F`, `none` = `0`. **Numbers are parsed as hexadecimal
+with or without `0x`**: `10` means 16.
+
+Groups (second byte of a score): `0` Guest, `1` Owner, `2` Manager, `3` Member,
+`4`–`7` GroupN. A plain grant leaves the group at 0, so `files listrights` shows ordinary
+members as `身份=Guest`; that echoes the group number and does **not** mean guest has
+access. `score=0x300` means Member group with no explicit bits, so the Member byte of
+the table applies; `mimei setright --mid <mid> <uid> 0x300` puts a uid in that group (the
+maintainers call this form undocumented). `mimei getright --mid <mid> <uid>` also
+accepts `guest` (the Guest byte), `all` (the default table) and `self` (the caller).
+
+Default tables:
+
+| Constant | Value | Guest byte | Use |
+|---|---|---|---|
+| `DataRight_Default_Group` | `0x072f6f00` | none | Private MiMei; the table of a new directory object |
+| `DataRight_Default_Guest` | `0x072f6f04` | Read | MiMei readable anonymously; the `mimei create` default |
+| `DataRight_Default_App` | `0x072f6f05` | Read + Execute | Read-only application data |
+
+`0x07276704`/`0x07276705`, still used by LifeDrive, are the spelling before a
+2026-09-24 correction. The Guest byte is the same (Read); they differ only in the Owner
+and Manager bytes. New code should use `0x072f6fxx`. By the effective-right rule, a
+table of `0` closes every group: only the author and uids with explicit grants have
+access.
+
+#### Making an anonymously readable MiMei private (no re-creation)
+
+Grant first, then tighten; tightening first leaves a window in which intended readers
+get `1101`.
+
+```bash
+Leither mimei show --mid <mid> -k <author key>                     # record the "Right" line for rollback
+Leither mimei setright --mid <mid> <uid> read -k <author key>      # each reader
+Leither mimei setright --mid <mid> <uid> operate -k <author key>   # each read/write member
+Leither mimei setright --mid <mid> all 0x072f6f00 -k <author key>  # Guest byte -> 0
+Leither mimei getright --mid <mid> guest                           # Effective Right: 0x00, Permissions: (none)
+Leither mimei show --mid <mid> -k <author key>                     # Right line reads 72f6f00 (hex, no 0x)
+```
+
+Roll back with `mimei setright --mid <mid> all <recorded table>`. Removing a uid's
+explicit grant (`… <uid> none`) returns it to its group default; it cannot block a
+Guest-readable table. After tightening, guest and unauthorized content reads fail with
+`1101`, but **names and directory structure remain listable** (see "What is checked on
+reads"). Do not tighten a MiMei that backs a public share link: guest reading it is
+what makes the link work. A share password only gates resolving the token, not a caller
+who already holds `/mm/<mid>` of a Guest-readable MiMei.
+
+#### Files directory objects
+
+- A plain Files path such as `/family/photos` can be registered as a directory object.
+  The object is itself a MiMei (`ext=filedir`) that carries rights only, no data. Its
+  `mid` is derived deterministically from the node system identity, the normalized
+  path, `filedir` and `MM_File`, so callers give only the path.
+- Lookup starts at the target path and walks up to the **nearest registered ancestor**
+  (itself, parent, …, `/`; depth limit 32). That one object decides; levels are **not
+  merged**. A child object replaces its parent's member list for its subtree. There is
+  no implicit object at `/`.
+- A new object gets `0x072f6f00` (Guest none). If the object already existed,
+  `files setright` does not overwrite its table; check it with
+  `mimei getright --mid <dir-object mid> all` and tighten it with `mimei setright`.
+- If the node changes its host key, every directory object stops matching and must be
+  registered again.
+
+```bash
+Leither files setright -u <uid> -d /family/photos -r operate   # or write, read, none, 0x..
+Leither files listrights -d /family/photos [--json|--raw]
+```
+
+`files setright` and `files listrights` **must run on the target node with its default
+identity**. With `-k`/`-p` the object `mid` is derived from another identity, the gate
+never finds it, and the command prints a `[warn]` ("dead object"). `files setright` is
+idempotent. `listrights` is read-only; it names the deciding object and says when it is
+an ancestor, and `--json` gives `default_right` (expect `0x72F6F00`). Never grant on
+`/.mm/<mid>/…` with `files setright`: `.mm` writes check the data MiMei, so such a grant
+is never consulted (section 5.2 measured this). Use `mimei setright` for MiMeis.
+
+#### What is checked on writes
+
+The Files write gate applies to five RPCs, `FilesMkdir`, `FilesRm`, `FilesMv`,
+`FilesCopy` and `FilesFlush`, for each normalized target path:
+
+1. Node system identity: allowed.
+2. Empty or forged session: `5006`.
+3. `/.temp/` and below: allowed (platform staging area).
+4. `/.mm/<mid>/…`: the MiMei's `DataRight_Write`.
+5. Other plain paths: allowed if the uid holds the `files` service (the old
+   whole-namespace channel, which the maintainers have decided to retire from path
+   decisions but which still works in V0.24.73); otherwise the nearest directory
+   object's `DataRight_Write`; with neither, `5006` (`no-files-access` /
+   `no-dir-object-right` in the log).
+
+Outside this gate:
+
+- WebDAV `/r/`, the only HTTP write surface, checks Write on the davroot MiMei and does
+  not consult directory objects.
+- `MFTemp2Files` (a MApp's temp-file-to-Files commit) is governed by a separate check,
+  C3, whose default `off` means no check. A write path built on it is not protected by
+  the Files gate.
+- Node switch `FilesGateMode` in `SystemVars.json` changes only the plain-path branch:
+  `off` (default) and `enforce` both reject, `observe` logs and allows. `off` does not
+  turn the gate off. It is for platform rollout; applications must not depend on it.
+
+#### What is checked on reads
+
+| Read | Checked in V0.24.73 |
+|---|---|
+| `mm://<mid>:<ver>/…` content (`mimei get`, `MMOpenUrl` + `MFGetData`, `MFReaddir`) | Yes, `DataRight_Read`; `1101` when missing |
+| HTTP `GET /mm/<mid>:<ver>/…`, `/mf/`, WebDAV `/r/` (davroot) | Yes, `DataRight_Read`; anonymous uses the Guest byte |
+| `FilesLs`, `FilesStat`, `MFLs`, `INOpen`, `FilesCheck`, `files ls/stat` | No. `FilesLs` does not look at the session; `FilesStat`/`MFLs` resolve it but decide nothing, an empty session included |
+| MApp `files://<plain path>` content | No per-directory check. The entry itself, when no `mid` is resolved, requires the system identity or the `mimei` service, otherwise `1101` |
+| MApp `files://.mm/<mid>/…` | Resolves the `mid`; `MFGetData` then checks that MiMei's Read |
+| MApp `files:///.mm/<mid>/…` (extra `/`, the documented example form) | Does not resolve the `mid`, so no MiMei check; only the entry requirement above |
+| `FilesCopy`/`FilesMv` source | Read is checked only for a `.mm/<mid>` source copied or moved across areas; a rename in place is exempt; plain sources have no read right |
+
+So today: anyone who can reach the node can list names and structure; a plain path's
+content is readable by any identity that passes the `files://` entry requirement, with
+no per-directory decision; a MiMei's content is readable according to its Guest byte
+and per-uid grants. A directory object's `-r read` grant has **no consumer** today and
+must not be described to users as read protection; a successful read proves nothing
+about a grant. The maintainers have not verified whether ordinary user sessions hold
+the `mimei` service by default. Using `mm://<mid>:last/…` as a `FilesCopy`/`FilesMv`
+source may skip the read check (only `:cur` is normalized); this is unverified.
+
+This table explains two section-5.2 observations. The `1101` measured on 2026-10-14
+for `MMOpenUrl("files:///.mm/<mid>/…")` by a non-owner is the entry requirement, not a
+MiMei read check. The anonymous `FilesLs`/`FilesStat` answers on `/.mm/<mid>` and on
+`mm://` forms are the unchecked listing row.
+
+#### Planned read gate (decided, not implemented, no version)
+
+- Scope: every plain path, not only `/.mm`. Order: system identity allowed; `/.temp/`
+  allowed; `/.mm/<mid>/…` by that MiMei's `DataRight_Read`; `/.user/<uid>/…` by the
+  nearest directory object and **denied when there is none**; other plain paths by the
+  nearest directory object and **allowed when there is none**. A root object as an
+  overall switch is possible later but not in this phase.
+- Same semantics as writes (nearest object, no merging), cached, same commands
+  (`files setright -r read`, `files listrights`).
+- A switch of its own, not `FilesGateMode`; C3 for `MFTemp2Files` moves from
+  `observe` to `enforce` in the same batch.
+- Applications may register objects and read grants now; they take effect when the
+  gate ships. Keep a version/capability check and do not claim read restriction
+  before then.
+
+Not expressible at all: different read rights for subdirectories inside one MiMei.
+The unit is a MiMei or a plain directory object. The options are a separate MiMei per
+independently granted directory (LifeDrive shares already do this), plain-path
+directories once the read gate exists (losing MiMei versions), or a new platform
+path-ACL mechanism.
+
+#### Error codes
+
+| Code | Meaning |
+|---|---|
+| `1101:Permission denied` | MiMei right missing (content read, MiMei write, `.mm` write) |
+| `5006:Insufficient permissions Run as administrator` | Node-level right missing (Files write gate, node operations) |
+| `2:session id is not safe!` | Invalid, forged or expired session (`ErrInvalidSid`); also an empty session used to write |
+| `bad id <uid>` | The target uid is not 27 characters |
+
+#### Changes from the 2026-10-14 memo
+
+- Node switch `FilesPublic` was removed from the code on 2026-11-02.
+- "The default table of an existing MiMei cannot be changed" is wrong:
+  `mimei setright --mid <mid> all <table>` changes it.
+- The planned read gate now covers every plain path, with special handling for `/.mm`
+  and `/.user`, instead of only `/.mm/<mid>`. The memo's "fail closed on an unknown
+  subject" now applies only under `/.user`; a MiMei path judges the Guest byte, which
+  keeps LifeDrive's empty-session share check (section 5.2) working.
+- `files listrights` and the read-gate status are new.
+
+#### LifeDrive mapping (checked against LifeAlbum source, 2026-11-11)
+
+The guide's LePan case assumes one Guest-readable drive MiMei per user. In LifeAlbum
+source that holds only for the legacy, non-household mode: the MApp creates the drive,
+share, upload-scratch and QR-login MiMeis with `creationRight()`, which is
+`driveRight = 0x07276704` without a household (`apps/lifedrive-server/common.go`,
+`household.go`). With a household it is the household's `private_right`. The identity
+service creates each user's drive, identity, backups, avatar, catalog and upload-scratch
+MiMeis with its configured `private_right` (`config.example.json` has `0`, every group
+closed) and verifies the value with `MMGetRight`. Its share-content MiMeis
+(`apps/lifedrive-identity/shares.go`) are created with `0x07276704` on purpose, so share
+links resolve without a session. The `private_right` configured on each node has not
+been checked here.
+
+For a household drive whose `private_right` has a zero Guest byte, the MiMei table is
+therefore already closed, and what remains open is the unchecked listing row. Names, sizes and CIDs of a private File MiMei can be listed
+by anyone reaching the node, and `/ipfs/<cid>` serves the bytes (section 5.2). The
+planned read gate covers `/.mm/<mid>`; the guide does not say whether it also covers
+`FilesLs`/`FilesStat` on `mm://<mid>:<ver>/…`, nor whether `/ipfs/<cid>` will require a
+session. Those remain questions for the maintainers.
+
+Open questions the maintainers list: per-user versus per-device uid granularity in the
+identity service and the configured `private_right`; long-term public-share semantics
+after tightening (Guest byte versus a future ticket/guest grant); the read gate's
+version; and whether per-subdirectory rights in one tree would be split MiMeis or a
+new platform path ACL.
 
 ## 9. API Boundaries
 

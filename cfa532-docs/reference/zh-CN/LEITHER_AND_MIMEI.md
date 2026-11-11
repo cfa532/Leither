@@ -407,6 +407,19 @@ Leither 身份以非对称密钥为基础。节点密钥的公钥摘要标识节
 
 应用运行时应直接调用对应 API；CLI 用于运维、诊断、恢复和人工复现 API 操作。
 
+### 8.1 V0.24.73 的权限模型与读写判据（维护方指南，2026-11-10）
+
+**翻译状态：** 摘要，不是全文翻译；完整内容、命令和 LifeDrive 对照见[英文参考第 8.1 节](../LEITHER_AND_MIMEI.md#81-rights-model-and-readwrite-enforcement-on-v02473-maintainers-guide-2026-11-10)。内容来自维护方的说明，本文未做运行时核实。
+
+- 权限客体只有两种：**弥媒（mid）** 与 **files 目录对象（`ext=filedir`）**。
+- 弥媒权限：逐人记录 `uid → score`，低字节是显式权限位，第 2 字节是分组；缺省权限表每个分组一个字节，低字节是 Guest。显式位非 0 用显式位，否则用分组对应的缺省字节；空会话（guest）用 Guest 字节。作者恒有全部权限。
+- 权限位：Execute `0x01`、Write `0x02`、Read `0x04`、Publish `0x08`、Backup `0x10`、Manager `0x20`、Super `0x40`；数字一律按十六进制解析。`0x072f6f00` 为 Guest 无权限，`0x072f6f04`（`mimei create` 缺省）为 Guest 可读；`0x07276704` 是 2026-09-24 前的旧写法，Guest 字节同样是 Read。
+- **存量弥媒可以直接收紧匿名读**，不用重建：先逐人 `mimei setright --mid <mid> <uid> read|operate -k <作者key>`，再 `mimei setright --mid <mid> all 0x072f6f00 -k <作者key>`，用 `mimei getright --mid <mid> guest` 回读。改前用 `mimei show` 记下原 `Right` 以便回滚。须在存有该弥媒的节点上执行；缓存 30 分钟，执行节点立即失效，其它副本未核。公开分享用的弥媒不能收紧，否则链接失效。
+- 收紧后**内容读**（`mm://`、`/mm/`、`MFGetData`、`/mf/`、WebDAV）返回 `1101`；但 `FilesLs`/`FilesStat`/`MFLs` 今天**不判读权**，文件名、大小和目录结构仍可被任何能连上节点的人列出。
+- files 目录对象：`files setright -u <uid> -d <目录> -r <权限>` 与 `files listrights -d <目录>`，必须在目标节点本机用缺省身份执行（带 `-k` 会登记出永远查不到的「死对象」）。判据取最近的已登记祖先对象，不与上层合并。**写**判据今天生效（`FilesMkdir/Rm/Mv/Copy/Flush`）；**读**授权会落库但无人消费，不能当作已限读。
+- 目录读判据已裁、未实施，无版本无排期：所有 plain 路径按最近目录对象判，无对象时缺省放行；`/.mm/<mid>` 按该弥媒的 Read；`/.user/<uid>` 无对象即拒。
+- 节点开关 `FilesPublic` 已于 2026-11-02 移除。
+
 ## 9. 三种 API 边界
 
 1. **CLI：** 完整的管理操作面，部分命令支持结构化 JSON。

@@ -9,7 +9,8 @@ at their original paths so their links, examples and future merges continue to w
 
 - [Leither and MiMei Technical Foundation](reference/LEITHER_AND_MIMEI.md): storage,
   versions, commit and pin cost, references, identity, MApps, browser bootstrap,
-  versioned runtime evidence, and the V0.24.63 CLI/IPFS inspection findings.
+  versioned runtime evidence, the V0.24.63 CLI/IPFS inspection findings, and the
+  V0.24.73 rights model and Files read/write enforcement (section 8.1).
 - [中文技术参考](reference/zh-CN/LEITHER_AND_MIMEI.md): the existing Chinese edition;
   it is a partial translation and may lag the English reference.
 - [Complete source index](UPSTREAM_INDEX.md): all existing non-hidden Markdown,
