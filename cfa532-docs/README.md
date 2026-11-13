@@ -40,6 +40,7 @@ at their original paths so their links, examples and future merges continue to w
 |---|---|
 | [Runtime issues](reference/RUNTIME_ISSUES.md) | Versioned historical Leither interpreter, API and operational evidence from TweetBackendApp |
 | [Tweet data and synchronization contract](integrations/tweet/DATA_AND_SYNC_CONTRACT.md) | Canonical current cross-client ownership, references, routing and recovery invariants |
+| [Leither structural questions (Tweet)](integrations/tweet/LEITHER_STRUCTURAL_QUESTIONS.md) | Questions to upstream about the author identity, cross-node RunMApp, node app codes and write authority, raised by the owner-only-writes refactor; answers pending |
 | [TweetWeb connection management](integrations/tweet/WEB_CONNECTION.md) | Historical server-side connection integration notes; examples are not newly revalidated |
 | [LifeDrive key-auth review (中文)](integrations/lifedrive/KEY_AUTH_REVIEW.zh-CN.md) | Historical native-key design and V0.24.12 observations; not the current household auth design |
 | [Migration record](MIGRATION.md) | Source revisions and the single maintained destination for every moved document |

@@ -85,6 +85,8 @@ A comment is also a Tweet object, but its storage rule is different from a top-l
 
 A comment is stored on the root node of its parent tweet/comment's author, regardless of who wrote the comment. The comment writer remains represented by `comment.authorId` inside the comment data.
 
+The storage rule says where the object lives, not who may write it. The comment writer does not send a request to the parent author's node; a session is only valid on the node that issued it, and a guest's credential exists only on their own root. The writer calls `add_comment` on their own root node with their session, and that node asks the parent author's node to perform the write through `apply_comment`, a peer entry that accepts only the application author's session and no client request. Deletion splits the same way (`delete_comment` on the deleter's root, `remove_comment` on the parent author's node, only the comment's author or the parent's author may delete). `apply_comment` is where a parent author's comment policy — a tweet closed to comments, or open only to selected users — will be checked; no such setting exists yet.
+
 When a comment is created, its parent object must contain a Mimei reference to the comment:
 
 ```text
@@ -107,11 +109,12 @@ Replies follow the same rule: a reply is stored on its parent comment author's r
 ## Caller Identity and Account Control (debug only, 2026-11-11)
 
 **Status:** implemented on the `owner-only-writes` branches of TweetBackendApp and
-Tweet-iOS and published to the debug app only (`twbe`, version 1717). Release, Android
-and Web do not use it. Nothing in this section changes where an object is stored or
-which node a write goes to. The storage rules for comments and replies above are still
-in force; they are the next thing this work intends to change, and this document must
-be revised when it does.
+Tweet-iOS and published to the debug app only (`twbe`). Release, Android
+and Web do not use it. Nothing in this section changes where an object is stored;
+it changes who may perform a write. Comments now flow through the writer's own
+root node and a guarded peer entry on the parent author's node (see Comment and
+Reply above); `health` advertises `commentDelegation` for nodes that take that
+form, and clients fall back to the old form on nodes without it.
 
 Every object is created and written under the application author's identity, so a
 node cannot tell users apart by itself and the user id in a request is a claim. The
@@ -139,11 +142,16 @@ Limits that matter to anyone changing synchronization or routing:
 - **A session is valid only on the node that issued it**, and a guest's credential
   exists only on the root node. A client opens a session on the node it is about to
   write to; this is one more reason writes go to `hostIds[0]`.
-- **Writes into another user's data are not covered**: `add_comment`,
-  `delete_comment`, `toggle_favorite`, `toggle_bookmark`, `retweet_added`,
-  `retweet_removed`, `toggle_follower` and `message_incoming` are unchanged.
-- **Node-to-node calls carry no user session.** The entries a node calls on another
-  node remain callable by any client.
+- **Writes into another user's data are not covered**: `toggle_favorite`,
+  `toggle_bookmark`, `retweet_added`, `retweet_removed`, `toggle_follower` and
+  `message_incoming` are unchanged. Comments are covered since the delegation
+  change: the write into the parent is performed by the parent author's own node
+  through `apply_comment`/`remove_comment`.
+- **Node-to-node calls carry no user session.** The comment peer entries admit
+  only a caller presenting the application author's session, which a client
+  cannot obtain — but this does not authenticate which node is calling, and the
+  remaining peer entries (`toggle_follower`, `toggle_favorite_by_user`,
+  `toggle_bookmark_by_user`) are still callable by any client.
 
 The request, what is built, what is missing and how to test are in
 `Tweet-iOS/docs/OWNER_ONLY_WRITES_MEMO.md`. Leither's sign-in behavior is recorded in
