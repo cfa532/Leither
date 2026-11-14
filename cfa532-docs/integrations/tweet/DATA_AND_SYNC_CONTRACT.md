@@ -87,6 +87,8 @@ A comment is stored on the root node of its parent tweet/comment's author, regar
 
 The storage rule says where the object lives, not who may write it. The comment writer does not send a request to the parent author's node; a session is only valid on the node that issued it, and a guest's credential exists only on their own root. The writer calls `add_comment` on their own root node with their session, and that node asks the parent author's node to perform the write through `apply_comment`, a peer entry that accepts only the application author's session and no client request. Deletion splits the same way (`delete_comment` on the deleter's root, `remove_comment` on the parent author's node, only the comment's author or the parent's author may delete). `apply_comment` is where a parent author's comment policy — a tweet closed to comments, or open only to selected users — will be checked; no such setting exists yet.
 
+Engagement follows the same rule (2026-11-14). `toggle_favorite`, `toggle_bookmark`, `retweet_added` and `retweet_removed` are called on the engaging user's own root with their session; the tweet author's node performs the tweet-side write through the guarded peer entries `apply_favorite`, `apply_bookmark` and `apply_retweet`, which also verify the tweet belongs to the named author. The follower side of a follow (`toggle_follower` on the followed user's node) is likewise restricted to the follower's node; `toggle_following` on the follower's root delegates to it. `health` advertises `engagementDelegation` for nodes that take this form; clients fall back to the old form on nodes without it.
+
 When a comment is created, its parent object must contain a Mimei reference to the comment:
 
 ```text
@@ -142,23 +144,26 @@ Limits that matter to anyone changing synchronization or routing:
 - **A session is valid only on the node that issued it**, and a guest's credential
   exists only on the root node. A client opens a session on the node it is about to
   write to; this is one more reason writes go to `hostIds[0]`.
-- **Writes into another user's data are not covered**: `toggle_favorite`,
-  `toggle_bookmark`, `retweet_added`, `retweet_removed`, `toggle_follower` and
-  `message_incoming` are unchanged. Comments are covered since the delegation
-  change: the write into the parent is performed by the parent author's own node
-  through `apply_comment`/`remove_comment`.
+- **Writes into another user's data are not covered**: `message_incoming` is
+  the last unchanged one. Comments (since 2026-11-13) and engagement — likes,
+  bookmarks, retweet counts, the follower side (2026-11-14) — are covered: the
+  engaging user calls the entry on their own root with their session, and the
+  other party's node performs its half through a guarded peer entry
+  (`apply_comment`/`remove_comment`, `apply_favorite`/`apply_bookmark`,
+  `apply_retweet`, and `toggle_follower` which is now peer-only). The peer
+  entries also re-derive the parent author from the tweet object itself, which
+  the old entries never checked.
 - **Node-to-node calls carry no user session, and the platform deletes `sid`
-  before forwarding** (maintainers' reply, 2026-11-13). The comment peer
-  entries identify their caller by the `nodeappcode` the platform injects on
-  the target — minted there under the calling node's transport session — and
-  admit it only when it names the expected delegating node: the comment
-  writer's (or deleter's) own root. Same-node delegation carries the local
-  author session instead, checked against the node-injected `author` key. A
-  code is bearer-grade: a leaked code from the expected node replays for
-  about an hour, and the check trusts that node itself — both documented
-  residuals. The remaining peer entries (`toggle_follower`,
-  `toggle_favorite_by_user`, `toggle_bookmark_by_user`) are still callable by
-  any client.
+  before forwarding** (maintainers' reply, 2026-11-13). The peer entries
+  identify their caller by the `nodeappcode` the platform injects on the
+  target — minted there under the calling node's transport session — and
+  admit it only when it names the expected delegating node: the acting user's
+  own root. Same-node delegation carries the local author session instead,
+  checked against the node-injected `author` key. A code is bearer-grade: a
+  leaked code from the expected node replays for about an hour, and the check
+  trusts that node itself — both documented residuals.
+  `toggle_favorite_by_user`/`toggle_bookmark_by_user` remain registered as
+  legacy but are no longer called by current clients.
 
 The request, what is built, what is missing and how to test are in
 `Tweet-iOS/docs/OWNER_ONLY_WRITES_MEMO.md`. Leither's sign-in behavior is recorded in
