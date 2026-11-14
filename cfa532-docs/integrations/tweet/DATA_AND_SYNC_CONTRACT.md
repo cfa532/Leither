@@ -147,11 +147,18 @@ Limits that matter to anyone changing synchronization or routing:
   `message_incoming` are unchanged. Comments are covered since the delegation
   change: the write into the parent is performed by the parent author's own node
   through `apply_comment`/`remove_comment`.
-- **Node-to-node calls carry no user session.** The comment peer entries admit
-  only a caller presenting the application author's session, which a client
-  cannot obtain — but this does not authenticate which node is calling, and the
-  remaining peer entries (`toggle_follower`, `toggle_favorite_by_user`,
-  `toggle_bookmark_by_user`) are still callable by any client.
+- **Node-to-node calls carry no user session, and the platform deletes `sid`
+  before forwarding** (maintainers' reply, 2026-11-13). The comment peer
+  entries identify their caller by the `nodeappcode` the platform injects on
+  the target — minted there under the calling node's transport session — and
+  admit it only when it names the expected delegating node: the comment
+  writer's (or deleter's) own root. Same-node delegation carries the local
+  author session instead, checked against the node-injected `author` key. A
+  code is bearer-grade: a leaked code from the expected node replays for
+  about an hour, and the check trusts that node itself — both documented
+  residuals. The remaining peer entries (`toggle_follower`,
+  `toggle_favorite_by_user`, `toggle_bookmark_by_user`) are still callable by
+  any client.
 
 The request, what is built, what is missing and how to test are in
 `Tweet-iOS/docs/OWNER_ONLY_WRITES_MEMO.md`. Leither's sign-in behavior is recorded in

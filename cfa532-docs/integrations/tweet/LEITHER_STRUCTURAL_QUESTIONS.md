@@ -2,9 +2,11 @@
 
 **Canonical home:** `cfa532/Leither/cfa532-docs/integrations/tweet/`
 **Date:** 2026-11-13
-**Status:** questions posed to the Leither developers; answers pending. Where
-a fact below is already documented, the document is cited; the questions are
-about the parts that are not.
+**Status:** answered by the Leither maintainers on 2026-11-13 — see
+[LEITHER_STRUCTURAL_ANSWERS_2026-11-13.md](LEITHER_STRUCTURAL_ANSWERS_2026-11-13.md)
+(their reply, preserved verbatim; baseline V0.24.74). The questions below are
+kept as posed; the four answers that changed our design are summarized in
+"Answers that changed the code" at the end.
 **Audience:** Leither maintainers (3and4/Leither), and anyone extending the
 Tweet backend's caller-identity model.
 **Related:** `DATA_AND_SYNC_CONTRACT.md` (same directory),
@@ -187,6 +189,39 @@ In priority order, behind the questions above:
    lifetime, `forapp` binding.
 5. Optionally, **execution under a caller uid** (E2), which would let the
    platform carry the owner-only rule natively.
+
+## Answers that changed the code
+
+From the maintainers' reply (2026-11-13), the four facts with direct
+consequences for the comment delegation:
+
+1. **Cross-node `RunMApp` deletes `sid` before forwarding** (§1.1). A target
+   entry cannot identify its caller by a session; the author-session peer
+   guard we shipped refused every genuine cross-node `apply_comment` /
+   `remove_comment` (the live test had exercised only the same-node path).
+2. **The platform injects `nodeappcode` into cross-node requests** carrying
+   `aid`, minted on the target under the calling node's transport session, so
+   it names the calling node; and **`author` is node-injected from the app
+   record**, overwriting caller-supplied values. The peer guard was rebuilt
+   on these two: `requirePeerCall` binds the code's `nodeid` to the expected
+   delegating node (the writer's/deleter's root), and the local branch
+   compares the session uid against the injected `author`.
+3. **A code is bearer-grade** (§C2): any logged-in user can mint one carrying
+   their own uid, and a code leaked from the expected node replays for about
+   an hour. The node binding closes the first hole; the second is the
+   documented residual.
+4. **The `BELoginAsAuthor` freeze rules out new call sites** (§A2), and
+   `BELoginAsAuthor` is not reachable from clients (§A3 — the backend login
+   family is not on the RPC surface). The rebuilt guard no longer adds a
+   call site: it reads the injected `author` key instead.
+
+Strategic answers kept for the roadmap: `byname` login (our guests) is
+legacy, node-local by design, and not to be built on further (§D1); there is
+no root-only version enforcement, so the app's own misrouted-write refusals
+are the only protection (§E1); `MMOpenAppDataUser` opens a per-user data
+region owned by the caller — the primitive the engagement phase should build
+on (§E2); and the maintainers judge a transport-set caller-node identity
+(`fromnid`) feasible, pending an author ruling (§7.1).
 
 ## Evidence appendix
 
