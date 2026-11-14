@@ -144,15 +144,17 @@ Limits that matter to anyone changing synchronization or routing:
 - **A session is valid only on the node that issued it**, and a guest's credential
   exists only on the root node. A client opens a session on the node it is about to
   write to; this is one more reason writes go to `hostIds[0]`.
-- **Writes into another user's data are not covered**: `message_incoming` is
-  the last unchanged one. Comments (since 2026-11-13) and engagement — likes,
-  bookmarks, retweet counts, the follower side (2026-11-14) — are covered: the
-  engaging user calls the entry on their own root with their session, and the
-  other party's node performs its half through a guarded peer entry
+- **Writes into another user's data are not covered**: none remain. Comments
+  (2026-11-13), engagement — likes, bookmarks, retweet counts, the follower
+  side — (2026-11-14) and messages (2026-11-14) are all covered: the acting
+  user calls the entry on their own root with their session, and the other
+  party's node performs its half through a guarded peer entry
   (`apply_comment`/`remove_comment`, `apply_favorite`/`apply_bookmark`,
-  `apply_retweet`, and `toggle_follower` which is now peer-only). The peer
-  entries also re-derive the parent author from the tweet object itself, which
-  the old entries never checked.
+  `apply_retweet`, `message_incoming`, and `toggle_follower` which is
+  peer-only). The peer entries also re-derive the parent author from the tweet
+  object itself, which the old entries never checked. With this, every write
+  family in the application follows owner-only writes; enforcement remains off
+  for backward compatibility until every client is updated.
 - **Node-to-node calls carry no user session, and the platform deletes `sid`
   before forwarding** (maintainers' reply, 2026-11-13). The peer entries
   identify their caller by the `nodeappcode` the platform injects on the
