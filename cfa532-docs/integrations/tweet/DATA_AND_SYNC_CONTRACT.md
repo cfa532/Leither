@@ -164,8 +164,8 @@ Limits that matter to anyone changing synchronization or routing:
   checked against the node-injected `author` key. A code is bearer-grade: a
   leaked code from the expected node replays for about an hour, and the check
   trusts that node itself — both documented residuals.
-  `toggle_favorite_by_user`/`toggle_bookmark_by_user` remain registered as
-  legacy but are no longer called by current clients.
+  `toggle_favorite_by_user`/`toggle_bookmark_by_user` are removed: they let
+  any caller edit any user's saved lists.
 
 The request, what is built, what is missing and how to test are in
 `Tweet-iOS/docs/OWNER_ONLY_WRITES_MEMO.md`. Leither's sign-in behavior is recorded in
