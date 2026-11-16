@@ -12,7 +12,9 @@ at their original paths so their links, examples and future merges continue to w
   versioned runtime evidence, the V0.24.63 CLI/IPFS inspection findings, and the
   V0.24.73 rights model and Files read/write enforcement (section 8.1), and
   username/password and key sign-in from clients as observed on V0.24.47 and
-  V0.24.73 (section 8.2).
+  V0.24.73 (section 8.2), and the V0.24.74 maintainers' source findings on
+  deterministic creation, local read errors, synchronization, author sessions
+  and MApp rollout.
 - [中文技术参考](reference/zh-CN/LEITHER_AND_MIMEI.md): the existing Chinese edition;
   it is a partial translation and may lag the English reference.
 - [Complete source index](UPSTREAM_INDEX.md): all existing non-hidden Markdown,
@@ -41,7 +43,7 @@ at their original paths so their links, examples and future merges continue to w
 | [Runtime issues](reference/RUNTIME_ISSUES.md) | Versioned historical Leither interpreter, API and operational evidence from TweetBackendApp |
 | [Tweet data and synchronization contract](integrations/tweet/DATA_AND_SYNC_CONTRACT.md) | Canonical current cross-client ownership, references, routing and recovery invariants |
 | [Leither structural questions (Tweet)](integrations/tweet/LEITHER_STRUCTURAL_QUESTIONS.md) | Questions to upstream about the author identity, cross-node RunMApp, node app codes and write authority; answered 2026-11-13 — see the [maintainers' reply](integrations/tweet/LEITHER_STRUCTURAL_ANSWERS_2026-11-13.md) |
-| [Leither structural questions II (Tweet)](integrations/tweet/LEITHER_STRUCTURAL_QUESTIONS_2.md) | Follow-up questions from the build: mark→mid contract, absence signals, sync lag for fresh objects, MApp self-version, the `fromnid` ruling, freeze guidance; answers pending |
+| [Leither structural questions II (Tweet)](integrations/tweet/LEITHER_STRUCTURAL_QUESTIONS_2.md) | Six follow-ups answered on 2026-11-16 in the [maintainers' reply](integrations/tweet/LEITHER_STRUCTURAL_ANSWERS_2026-11-16.md). The `fromnid` decision remains open. |
 | [TweetWeb connection management](integrations/tweet/WEB_CONNECTION.md) | Historical server-side connection integration notes; examples are not newly revalidated |
 | [LifeDrive key-auth review (中文)](integrations/lifedrive/KEY_AUTH_REVIEW.zh-CN.md) | Historical native-key design and V0.24.12 observations; not the current household auth design |
 | [Migration record](MIGRATION.md) | Source revisions and the single maintained destination for every moved document |

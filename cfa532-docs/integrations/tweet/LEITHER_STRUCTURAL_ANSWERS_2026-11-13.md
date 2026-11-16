@@ -8,6 +8,13 @@ from their private root repository (`docs/…`, `planning-artifacts/…`,
 `3and4/Leither` repository.
 
 **Companion questions:** `LEITHER_STRUCTURAL_QUESTIONS.md` (same directory).
+
+**2026-11-16 correction:** The [follow-up reply, section 5](LEITHER_STRUCTURAL_ANSWERS_2026-11-16.md#5-题-5fromnid-的裁决状态与可行性订正)
+supersedes the `fromnid` feasibility details in sections 3 and 7.1 below.
+`NodeApiClient.Sid` is available to the caller. The receiving `RunMApp`
+RPC has no session argument or transport identity context. A verified
+`fromnid` requires a platform change, and the decision remains open.
+
 **What we changed because of it:** the comment peer guard now binds the
 platform-injected `nodeappcode` to the expected delegating node, and the
 local branch compares against the node-injected `author` key instead of

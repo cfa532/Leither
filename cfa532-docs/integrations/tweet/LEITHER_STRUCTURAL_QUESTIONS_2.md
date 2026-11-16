@@ -2,7 +2,8 @@
 
 **Canonical home:** `cfa532/Leither/cfa532-docs/integrations/tweet/`
 **Date:** 2026-11-14
-**Status:** questions posed to the Leither developers; answers pending.
+**Status:** The [maintainers replied on 2026-11-16](LEITHER_STRUCTURAL_ANSWERS_2026-11-16.md)
+with findings from the V0.24.74 source. The `fromnid` decision remains open.
 **Predecessor:** `LEITHER_STRUCTURAL_QUESTIONS.md` (2026-11-13) with the
 maintainers' reply in `LEITHER_STRUCTURAL_ANSWERS_2026-11-13.md` — read
 first; this memo only covers what building on those answers surfaced next.
@@ -24,6 +25,17 @@ by the platform-injected `nodeappcode`, bound to the acting user's root —
 exactly the pattern the first reply made possible. Submissions of tweets and
 comments are idempotent through a caller-generated `requestid`. These six
 questions came out of that work.
+
+## Maintainers' answers (2026-11-16)
+
+| Question | Answer |
+|---|---|
+| 1. Deterministic MiMei IDs | The namespace is `(uid, appid, ext, mark, tp)`. Strict DHT verification enforces the derivation. It is outside the published API contract. Re-creation returns the existing ID and leaves content validation to the app. |
+| 2. Local absence | For File MiMei, `OpenMM ver is empty` indicates a missing local version alias when metadata is present. Local metadata, version records and read permission have separate checks. A failed network lookup is inconclusive. |
+| 3. Sync timing | The case-sensitive `SourcePeer` option takes a Leither node ID and skips provider discovery for the requested MiMei. `vers` is parsed but unused. The bounded MApp call can return after five seconds while the worker continues. |
+| 4. Running app version | `GetVar("ver")` reports the node version. Local aliases can advance after an invocation loads its code. A build ID embedded in the app and returned by `health` identifies the code that handled the request. Serving nodes converge by pulling updates, with no guaranteed delay. |
+| 5. `fromnid` | The maintainers found no recorded ruling. The target RPC receives neither a session argument nor request context for the transport identity. Exposing a verified caller identity requires a platform change. |
+| 6. Author-login freeze | External Tweet calls are part of the observation used for removal decisions. The freeze has no removal deadline or CI enforcement. The available app-identity APIs cover some existing objects and app-level data, with gaps in per-object creation and first publication. |
 
 ## Questions
 

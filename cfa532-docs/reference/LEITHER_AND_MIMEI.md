@@ -5,6 +5,8 @@
 
 **Status:** Application-independent technical reference
 **Leither CLI reviewed:** V0.24.02, API contract version 1; commit, pin and node-Files behavior rechecked on V0.24.23 (2026-09-16, section 5.6) and on V0.24.27 (2026-09-19, section 5.7); public node variables (`GetVar`/`/getvar`) verified on V0.24.64 (2026-10-20, section 9.8); rights model and Files read/write enforcement from the maintainers' V0.24.73 guide (2026-11-10, section 8.1, not runtime-verified here); username/password and key sign-in from clients verified on V0.24.47 and V0.24.73 (2026-11-11, section 8.2)
+**Maintainers' source review:** V0.24.74, private root revision `a3ce96e8`
+([2026-11-16 reply](../integrations/tweet/LEITHER_STRUCTURAL_ANSWERS_2026-11-16.md)).
 **Online documentation reviewed:** `vzhan.cn/#doc.html`, August 2026
 **Source repository reviewed:** [3and4/Leither](https://github.com/3and4/Leither), originally August 2026; documentation index, README, historical changelog and key-authentication guide refreshed on 2026-10-16 at commit `90362aef401c4d7ff53eb3573443f031f0be880f`
 **CLI inspection refreshed:** gen8 `/home/pi/demo/Leither`, V0.24.63, amd64, API 1, 2026-10-16; all 159 help entries inspected recursively (section 12.1). Earlier runtime observations retain their own version and date.
@@ -75,7 +77,19 @@ Applications can use both modes deliberately:
 - A deterministic mark identifies a singleton resource whose identity must be reproducible.
 - An automatic mark creates an independent object whose identity must be unique.
 
-Marks must be namespaced by application and purpose. They are identifiers, not user-visible names.
+The [V0.24.74 maintainer review](../integrations/tweet/LEITHER_STRUCTURAL_ANSWERS_2026-11-16.md)
+identifies the deterministic namespace as `(uid, appid, ext, mark, tp)`. The
+`uid` comes from the creation session. The legacy algorithm hashes
+`uid + "\x06" + appid + "\x06" + ext + "\x06" + mark` with SHA-256, takes the
+first 20 bytes and encodes them with the data-type byte `tp`. Object kind needs
+its own `ext` or mark convention if kinds otherwise share those inputs.
+
+`MMCreate` returns the existing ID when it encounters the same deterministic ID.
+An application retry must still verify or complete content written under that
+ID. Retrying under a different UID derives a different ID, and deriving the
+same ID on two nodes does not merge their local writes. Strict DHT record
+verification recomputes the ID and rejects a mismatch. This is a V0.24.74
+protocol invariant outside the published API contract.
 
 ## 4. MiMei Versions
 
@@ -375,6 +389,24 @@ The corresponding JavaScript MApp pattern verified against the installed API is:
 The session contract deserves explicit verification. The repository API document names the first `MMBackup` argument `sid`, while its runnable database-backup example passes the `mmsid` returned by `MMOpen`. Existing JavaScript applications may use an author session obtained from `BELoginAsAuthor()`. This is API-version drift, not a semantic difference in what backup means. Adapters must probe or pin the installed signature rather than infer the required session type from the parameter name.
 
 `MMBackup` and `MFSetCid` must likewise not be called blindly as two mandatory commits for one mutation. `MMBackup` is the general MiMei snapshot operation. `MFSetCid` is the installed File-MiMei path used to assign a completed root CID and may itself return the resulting version. The application adapter must follow the installed runtime's verified commit contract and expose one logical commit to callers.
+
+#### Diagnosing a missing local File MiMei version
+
+The [V0.24.74 maintainer review](../integrations/tweet/LEITHER_STRUCTURAL_ANSWERS_2026-11-16.md)
+describes separate checks for metadata, versions and access:
+
+| Check | What it establishes |
+|---|---|
+| `GetVar(sid, "mminfo", mid)` | Code `30000` (`No MiMei mid[…]`) means local metadata is absent. Code `1101` means the caller has no effective rights to read the metadata. |
+| `GetVar(sid, "mmversions", mid)` and `GetVar(sid, "mmvernamed", mid, "last")` | Inspect local version records and resolve a local alias. Exclude `cur` from the version keys because it records update time. |
+| `MMOpen(sid, mid, "last")` | For File MiMei with local metadata, the untyped `OpenMM ver is empty` error means the requested alias has no local version entry. DB MiMei handles an empty resolved version differently. |
+| `MMGetRight(sid, mid, "self")` and the actual data read | Inspect the caller's rights. A successful open can still be followed by `1101:Permission denied` from `MFGetData` or `MFReaddir`. |
+| `MiMeiShow(sid, dhts, mid)` | Look for a published record on the network. A miss or network failure leaves network existence unknown. |
+
+Use a committed selector such as `last` or `release` for a read probe. Opening
+`cur` can create an empty local file, and an empty selector can return a separate
+version-lookup error. Version metadata describes the local version table. The
+read itself confirms that the payload is usable.
 
 ### 5.4 Handle Ownership and Cleanup
 
@@ -707,7 +739,25 @@ mutate cur
    -> verify providers and replica health
 ```
 
-Synchronization supports selecting versions and a source peer. Minimal synchronization without IPFS payloads is available for metadata-oriented recovery, while full synchronization retrieves the required content.
+#### Source-directed synchronization on V0.24.74
+
+The [2026-11-16 maintainer review](../integrations/tweet/LEITHER_STRUCTURAL_ANSWERS_2026-11-16.md)
+identifies these `MiMeiSync` options:
+
+| Option | Behavior |
+|---|---|
+| `SourcePeer` | Takes the source node's Leither ID. It bypasses provider discovery for the requested MiMei and still depends on reaching that node. |
+| `WaitAllData` | Waits for referenced data as well. |
+| `reclevel` | Sets the reference recursion depth, which defaults to two. |
+| `WithoutIpfs` | Skips IPFS payloads. |
+| `vers` | Parsed without effect in this revision. Verify the required version after synchronization. |
+
+The bounded in-MApp call has a five-second wait budget. If it returns
+`mapp call bounded: node is still working for this app`, the worker can continue
+in the background. Recheck the required local version and read before retrying.
+The platform's automatic no-provider retries are bounded at 1m, 5m, 15m, 30m,
+1h and 2h. An explicit sync resets that retry state. These intervals describe
+retry scheduling and give no guarantee that a replica will converge.
 
 **Do not synchronize a MiMei this node already owns.** On V0.24.02, `SyncMiMei` panics
 with a bounds error when the object exists but no *other* node provides it — the
@@ -1056,13 +1106,30 @@ compact form but not the full identity file.
   `GetVar(thatSid, "userid")`. Verified in the Tweet Go MApp on V0.24.73 for both a
   `byname` session and a key session; LifeDrive's MApp does the same.
 - Use a parameter name of your own. `sid` is also what one entry hands another and
-  what a cross-node `RunMApp` carries (the author session), so a user's session under
-  that name can be replaced or mistaken for the author's. Tweet uses `usersid`.
+  what the forwarding path removes before a cross-node `RunMApp`. Tweet uses
+  `usersid` for the client credential, which is resolved on the issuing node.
 - A 40-hex string the node never issued did not resolve to a uid. The probe could not
   tell whether `GetVar` returned an error or an empty value, because the MApp treats
   both as "Session invalid".
 - The session is a bearer credential for as long as it lives (one hour, lost on
   restart). Redact it in request logs, as with a password.
+
+### 8.3 Frozen author login and storage migration on V0.24.74
+
+The [2026-11-16 maintainer review](../integrations/tweet/LEITHER_STRUCTURAL_ANSWERS_2026-11-16.md)
+describes `BELoginAsAuthor` as frozen since 2026-09-03. Existing calls are
+observed through `[BELA-CALL]`. External MApps count as external usage, and
+removal is observation-driven with no fixed deadline or CI enforcement.
+The freeze bars new dependencies on the API.
+
+`BELoginAsApp` stores only `SessionKey_AppID`. `MMCreate` needs
+`SessionKey_UserID`, and backup, release and reference operations resolve a
+user session or the identity on an opened MiMei handle. With the required
+rights granted to its app ID, an app can open and maintain an existing MiMei
+using that handle. `BEOpenAppDataApp` opens the application's author-owned DB
+data region. An application whose model creates one author-owned MiMei per
+object still lacks a complete migration path. Creation needs an author identity,
+and first publication needs author signing authority.
 
 ## 9. API Boundaries
 
@@ -1145,6 +1212,14 @@ The documented `/entry` parameters are:
 | `nid` | Optional remote node identifier for cross-node execution |
 
 `/entry` is useful for simple GET-style calls, operational checks, and debugging. It is not the preferred transport for chunked binary application traffic.
+
+In the [V0.24.74 source reviewed by the maintainers](../integrations/tweet/LEITHER_STRUCTURAL_ANSWERS_2026-11-16.md),
+cross-node forwarding drops the request's `sid`. The receiving `RunMApp`
+RPC has no session argument or context from which the receiving MApp can learn
+the transport identity. The calling node uses its transport session to obtain
+`nodeappcode`, a bearer credential scoped to a target app. A platform-provided
+`fromnid` would require an RPC or request-authentication change. The decision
+was still open on 2026-11-16.
 
 ### 9.2 Go MApp Interpreter Contract
 
@@ -1441,7 +1516,8 @@ A File-tree application may keep bytes in a temporary file, attach the completed
 
 TweetBackendApp is a useful behavioral reference for:
 
-- `BELoginAsAuthor()` before owner-authorized creation or mutation.
+- Existing `BELoginAsAuthor()` use for author-owned creation or mutation. See
+  section 8.3 for the freeze and the limits of the available migration paths.
 - `MMCreate` with application ID, namespaced extension, deliberate mark, data type, and rights.
 - `mm://<mid>:cur/...` paths for File-MiMei tree writes and `mm://<mid>:last/...` for committed reads.
 - One backup after a successful logical mutation.
@@ -1486,6 +1562,19 @@ The application directory name identifies the source supplied to `uploadapp`. Th
 An operator script should preserve this ordering, stop on a failed upload or backup, query the application with the same publisher identity, validate its name, and publish only the returned `appId`. It must not embed a deployment-specific publication ID. Deployment credentials remain outside the application source and source-control repository.
 
 Application backup and application publication are distinct from an application's own data lifecycle. For a file-oriented application, `lapp backup` packages the application, while `mimei backup --mid <data-mid>` commits a File-type data tree.
+
+The [V0.24.74 maintainer review](../integrations/tweet/LEITHER_STRUCTURAL_ANSWERS_2026-11-16.md)
+describes app loading from each serving node's local manifest. A node needs a
+sync trigger to acquire a published version, and the platform gives no
+convergence deadline. Advancing local `last` or `release` invalidates the
+manifest cache for that alias without a restart. An explicit
+`MiMeiSync` with `SourcePeer` can pull the app MiMei to each serving node.
+
+`GetVar("ver")` is the node software version, and `Request["ver"]` is the
+requested version selector. `appinfo` reports `last` and `release`, while
+`mmvernamed` resolves the current local alias. That alias can advance after
+an invocation has loaded its code. An app can report the build that handled
+`health` by returning a build ID embedded in the app source.
 
 ### 9.8 Public Node Variables: `GetVar` and `/getvar` (verified on V0.24.64, 2026-10-20)
 

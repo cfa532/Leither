@@ -85,7 +85,7 @@ A comment is also a Tweet object, but its storage rule is different from a top-l
 
 A comment is stored on the root node of its parent tweet/comment's author, regardless of who wrote the comment. The comment writer remains represented by `comment.authorId` inside the comment data.
 
-The storage rule says where the object lives, not who may write it. The comment writer does not send a request to the parent author's node; a session is only valid on the node that issued it, and a guest's credential exists only on their own root. The writer calls `add_comment` on their own root node with their session, and that node asks the parent author's node to perform the write through `apply_comment`, a peer entry that accepts only the application author's session and no client request. Deletion splits the same way (`delete_comment` on the deleter's root, `remove_comment` on the parent author's node, only the comment's author or the parent's author may delete). `apply_comment` is where a parent author's comment policy — a tweet closed to comments, or open only to selected users — will be checked; no such setting exists yet.
+The storage rule says where the object lives, not who may write it. The comment writer does not send a request to the parent author's node; a session is only valid on the node that issued it, and a guest's credential exists only on their own root. The writer calls `add_comment` on their own root node with their session, and that node asks the parent author's node to perform the write through `apply_comment`, a guarded peer entry. On a cross-node call it requires a node app code bound to the writer's root. A same-node call uses the local application-author session. Deletion splits the same way (`delete_comment` on the deleter's root, `remove_comment` on the parent author's node, only the comment's author or the parent's author may delete). `apply_comment` is where a parent author's comment policy — a tweet closed to comments, or open only to selected users — will be checked; no such setting exists yet.
 
 Engagement follows the same rule (2026-11-14). `toggle_favorite`, `toggle_bookmark`, `retweet_added` and `retweet_removed` are called on the engaging user's own root with their session; the tweet author's node performs the tweet-side write through the guarded peer entries `apply_favorite`, `apply_bookmark` and `apply_retweet`, which also verify the tweet belongs to the named author. The follower side of a follow (`toggle_follower` on the followed user's node) is likewise restricted to the follower's node; `toggle_following` on the follower's root delegates to it. `health` advertises `engagementDelegation` for nodes that take this form; clients fall back to the old form on nodes without it.
 
@@ -108,6 +108,18 @@ tweetid        = parent tweet/comment ID
 
 Replies follow the same rule: a reply is stored on its parent comment author's root node and is directly referenced by that parent comment.
 
+### Retrying a submission
+
+The [V0.24.74 maintainer review](LEITHER_STRUCTURAL_ANSWERS_2026-11-16.md)
+confirms that a submission retry can use the same `requestid` as its
+`MMCreate` mark. The resulting ID is scoped by the creation session UID,
+app ID, extension, mark and data type. Tweets and comments can share those
+inputs, so the client's `<requestid>-quote` suffix gives the quote half a
+distinct mark. Keep each retry on the same authoritative write node with the
+same creation inputs. `MMCreate` may return an existing mid even when a
+previous attempt only partially wrote its data. The submission path must
+validate or complete the stored object.
+
 ## Caller Identity and Account Control (debug only, 2026-11-11)
 
 **Status:** implemented on the `owner-only-writes` branches of TweetBackendApp and
@@ -123,8 +135,9 @@ node cannot tell users apart by itself and the user id in a request is a claim. 
 backend now checks that claim where it can:
 
 - A client signs in to the node's own Leither login and passes the session as
-  `usersid`. The node resolves it with `GetVar(usersid, "userid")`. The parameter is
-  not `sid`, which carries the author session between entries and between nodes.
+  `usersid`. The node resolves it with `GetVar(usersid, "userid")`.
+  `sid` is reserved for local entry calls, and Leither removes it when forwarding
+  a cross-node request.
 - A User records the Leither user id that controls it as `authUid`. A User created
   before this change has none until its user signs in once on its root node.
 - **Owners** have access to the node's machine. `tweet-owner.sh` there issues a
@@ -166,6 +179,13 @@ Limits that matter to anyone changing synchronization or routing:
   trusts that node itself — both documented residuals.
   `toggle_favorite_by_user`/`toggle_bookmark_by_user` are removed: they let
   any caller edit any user's saved lists.
+
+The [2026-11-16 maintainer reply](LEITHER_STRUCTURAL_ANSWERS_2026-11-16.md)
+clarifies that cross-node `RunMApp` exposes no transport session to the
+receiver. A platform-set `fromnid` remains undecided. It would require an
+RPC or request-authentication change. Tweet's use of `BELoginAsAuthor`
+counts as external usage under the freeze. Existing author-owned per-object
+storage has no complete app-identity migration path in V0.24.74.
 
 The request, what is built, what is missing and how to test are in
 `Tweet-iOS/docs/OWNER_ONLY_WRITES_MEMO.md`. Leither's sign-in behavior is recorded in
@@ -356,8 +376,7 @@ The one read-triggered pull is a detail-view miss. When `get_tweet` is called wi
 
 1. Finds the author's root host from the client's `authorhostid` or, for a Tweet
    quoted by a v3 reply, from the quoted Tweet's author account (`authorid`). With
-   no root host known, or when this node is the root, it does nothing: a Tweet
-   missing from its root does not exist.
+   no root host known, or when this node is the root, it skips the peer pull.
 2. Calls `MiMeiSync` for the Tweet, then `MiMeiIsProvider`/`MiMeiProvide` as in
    the provider-role bullet above.
 3. Reads the Tweet again and returns it. If the sync fails, the read reports
@@ -366,6 +385,24 @@ The one read-triggered pull is a detail-view miss. When `get_tweet` is called wi
 This is deliberately narrow: the request names a Tweet the user explicitly opened,
 and the alternative is reporting "not found" for a Tweet Leither has not yet
 delivered. A node that already holds the Tweet takes no sync here.
+
+### Local recovery and rollout guidance — 2026-11-16
+
+The [maintainers' V0.24.74 source review](LEITHER_STRUCTURAL_ANSWERS_2026-11-16.md)
+gives the following guidance for future recovery and rollout changes:
+
+- Separate missing local metadata (code `30000`) from missing local version
+  records and permission failures (code `1101`). For File MiMei,
+  `OpenMM ver is empty` tells the caller that the local alias is missing when
+  metadata is present. See the [local read checks](../../reference/LEITHER_AND_MIMEI.md#diagnosing-a-missing-local-file-mimei-version).
+- When recovery already knows the object's source node, `MiMeiSync` can take
+  its node ID via `SourcePeer`. If the MApp wait budget expires, recheck the
+  local read while sync proceeds. A failed `MiMeiShow` lookup leaves network
+  existence unknown.
+- For app rollouts, an explicit source-directed sync can advance each serving
+  node's app copy. A build ID embedded in the app and returned by `health`
+  would identify the code that answered. Keep the existing per-node capability
+  checks while serving nodes run different builds.
 
 ## Review Checklist
 
