@@ -4,7 +4,7 @@
 **Moved:** 2026-10-16 from LifeAlbum; the old path contains only a relocation notice.
 
 **Status:** Application-independent technical reference
-**Leither CLI reviewed:** V0.24.02, API contract version 1; commit, pin and node-Files behavior rechecked on V0.24.23 (2026-09-16, section 5.6) and on V0.24.27 (2026-09-19, section 5.7); public node variables (`GetVar`/`/getvar`) verified on V0.24.64 (2026-10-20, section 9.8); rights model and Files read/write enforcement from the maintainers' V0.24.73 guide (2026-11-10, section 8.1, not runtime-verified here); username/password and key sign-in from clients verified on V0.24.47 and V0.24.73 (2026-11-11, section 8.2)
+**Leither CLI reviewed:** V0.24.02, API contract version 1; commit, pin and node-Files behavior rechecked on V0.24.23 (2026-09-16, section 5.6) and on V0.24.27 (2026-09-19, section 5.7); public node variables (`GetVar`/`/getvar`) verified on V0.24.64 (2026-10-20, section 9.8); rights model and Files read/write enforcement from the maintainers' V0.24.73 guide (2026-11-10, section 8.1, not runtime-verified here); username/password and key sign-in from clients verified on V0.24.47 and V0.24.73 (2026-11-11, section 8.2); one-call-at-a-time MApp execution and the `/entry` writer verified on V0.24.74 (2026-11-16, section 9.2)
 **Maintainers' source review:** V0.24.74, private root revision `a3ce96e8`
 ([2026-11-16 reply](../integrations/tweet/LEITHER_STRUCTURAL_ANSWERS_2026-11-16.md)).
 **Online documentation reviewed:** `vzhan.cn/#doc.html`, August 2026
@@ -1373,6 +1373,37 @@ Use large bounded chunks to reduce invocation count, monitor the RSS of the proc
 that owns the listening socket, and remeasure after every Leither upgrade. Scheduled
 restarts remain a prudent guard until a long-run V0.24.05 heap profile demonstrates
 that compilation state is released.
+
+#### One Call at a Time per Application, and the `/entry` Writer (verified on V0.24.74, 2026-11-16)
+
+Measured on gen8, V0.24.74, with the LifeDrive Go MApp. A `GET /entry` call
+streamed a 688 MB file into the entry's `io.Writer` in 29.6 s (about 23 MB/s).
+A `health` call for the same application, sent 1 s after the stream started,
+answered after 28.6 s, when the stream ended. That `health` entry makes no
+outbound calls. The node therefore runs one call at a time for the application,
+and a long call holds every other call for it until it returns. Short calls,
+such as chunked uploads, alternate with each other. A client that sends a call
+while another is running can also receive `app busy: another request is still
+running for this app`, which the LifeDrive web client retries. An earlier probe
+appeared not to block because its 75 KB response fit in the socket buffers.
+Whether calls to a different application wait as well was not tested.
+
+The same node showed how the entry writer behaves:
+
+- It cannot set headers. Leither sends `200`, `Transfer-Encoding: chunked` and
+  no `Content-Length`. It sets `Content-Type` by sniffing the content, so
+  LifeDrive's `index.html` came back as `text/html; charset=utf-8`. A
+  `Range` cannot be answered, and an HTML payload renders in the node's origin.
+- When an entry returns an error, Leither writes an HTML error page
+  (`<html id="LeitherHtml"><title>Error</title>…`) into the response body.
+  A stream that fails after writing bytes therefore ends with that page
+  appended and no truncation signal.
+
+Do not stream large or long-running responses through a MApp entry on a node
+whose application serves other clients. Leither's own `/mm/<mid>:<ver>/<path>`
+and `/ipfs/<cid>` routes serve bytes on the same port without the interpreter,
+and `/ipfs/<cid>` answers byte ranges (section 5). LifeDrive withdrew its
+streaming `household_download` entry the same day for this reason.
 
 ### 9.3 Browser Web-Application Bootstrap
 

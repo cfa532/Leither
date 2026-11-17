@@ -14,7 +14,8 @@ at their original paths so their links, examples and future merges continue to w
   username/password and key sign-in from clients as observed on V0.24.47 and
   V0.24.73 (section 8.2), and the V0.24.74 maintainers' source findings on
   deterministic creation, local read errors, synchronization, author sessions
-  and MApp rollout.
+  and MApp rollout, and the V0.24.74 runtime finding that a node runs one call
+  at a time per MApp, with the `/entry` writer's limits (section 9.2).
 - [中文技术参考](reference/zh-CN/LEITHER_AND_MIMEI.md): the existing Chinese edition;
   it is a partial translation and may lag the English reference.
 - [Complete source index](UPSTREAM_INDEX.md): all existing non-hidden Markdown,
