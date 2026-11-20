@@ -79,6 +79,28 @@ User --reference--> Tweet
 
 The tweet author's identity determines the tweet's storage node.
 
+### Attachments and image previews (2026-11-20)
+
+Attachment media files are Mimei children of their tweet (or comment): the backend
+adds `MMAddRef(tweet, attachment.mid)` when the tweet is created, moves references
+when `update_tweet` changes the attachment set, and drops them on deletion so the
+files become collectable.
+
+An image attachment larger than 200 KB may carry `previewMid`: a second uploaded
+file of at most 200 KB (at most 1.5 megapixels, orientation applied, metadata such
+as GPS removed; JPEG, or PNG when the image has transparency). A preview is a
+child of the tweet exactly like the media it previews; the backend references,
+moves and releases both together. Without that reference a preview would not
+synchronize to serving nodes.
+
+Readers: feeds load `previewMid` when present; detail and fullscreen views load
+`mid`, the original. Attachments without `previewMid` (small images, other media,
+older posts, writers that do not create previews) load `mid` everywhere. Readers
+that ignore the field keep working because they load the original.
+
+Writers: iOS creates previews from 2026-11-20; Android and Web do not yet. Deploy
+the backend that references `previewMid` before any client writes it.
+
 ### Comment and Reply
 
 A comment is also a Tweet object, but its storage rule is different from a top-level tweet.
